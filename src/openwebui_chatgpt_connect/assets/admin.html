@@ -1,0 +1,659 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="siwc-csrf" content="__CSRF__">
+  <meta name="siwc-endpoint" content="__BASE_URL__">
+  <meta name="siwc-ssh-command" content="__SSH_COMMAND__">
+  <meta name="siwc-initial-state" content="__INITIAL_STATE__">
+  <title>ChatGPT Connect</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f7f7f5;
+      --panel: rgba(255, 255, 255, 0.94);
+      --text: #171717;
+      --muted: #6b6b66;
+      --border: #deded9;
+      --soft: #f1f1ed;
+      --accent: #10a37f;
+      --accent-hover: #0d8c6d;
+      --danger: #c43d3d;
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 14px 35px rgba(0, 0, 0, 0.05);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        color-scheme: dark;
+        --bg: #161616;
+        --panel: rgba(35, 35, 33, 0.96);
+        --text: #f4f4f0;
+        --muted: #aaa9a2;
+        --border: #42423e;
+        --soft: #2b2b28;
+        --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 18px 45px rgba(0, 0, 0, 0.2);
+      }
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      min-height: 100vh;
+      margin: 0;
+      background:
+        radial-gradient(circle at 15% 0%, rgba(16, 163, 127, 0.08), transparent 32rem),
+        var(--bg);
+      color: var(--text);
+      font: 15px/1.5 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    button, input { font: inherit; }
+    button, a { -webkit-tap-highlight-color: transparent; }
+    h1, h2, h3, p { margin-top: 0; }
+    h1 { margin-bottom: 2px; font-size: clamp(25px, 5vw, 32px); line-height: 1.15; letter-spacing: -0.035em; }
+    h2 { margin-bottom: 4px; font-size: 19px; letter-spacing: -0.018em; }
+    h3 { margin-bottom: 3px; font-size: 15px; }
+    a { color: inherit; }
+    [hidden] { display: none !important; }
+
+    .shell { width: min(720px, calc(100% - 32px)); margin: 0 auto; padding: 60px 0 40px; }
+    .brand { display: flex; gap: 16px; align-items: center; margin-bottom: 28px; }
+    .brand img { width: 52px; height: 52px; flex: 0 0 52px; border-radius: 15px; }
+    .brand p, .muted { margin-bottom: 0; color: var(--muted); }
+    .stack { display: grid; gap: 14px; }
+    .card {
+      overflow: hidden;
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(16px);
+    }
+    .card-body { padding: 24px; }
+    .card-heading { display: flex; gap: 20px; align-items: flex-start; justify-content: space-between; }
+    .card-heading p { margin: 0; color: var(--muted); }
+    .eyebrow {
+      margin-bottom: 7px;
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+    }
+
+    button, .button {
+      display: inline-flex;
+      min-height: 38px;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      border: 1px solid transparent;
+      border-radius: 10px;
+      padding: 8px 14px;
+      background: var(--accent);
+      color: white;
+      font-weight: 650;
+      text-decoration: none;
+      cursor: pointer;
+      transition: background 120ms ease, border-color 120ms ease, transform 120ms ease;
+    }
+    button:hover, .button:hover { background: var(--accent-hover); }
+    button:active, .button:active { transform: translateY(1px); }
+    button:disabled { cursor: default; opacity: 0.5; }
+    button.secondary, .button.secondary { border-color: var(--border); background: transparent; color: var(--text); }
+    button.secondary:hover, .button.secondary:hover { background: var(--soft); }
+    button.danger { color: var(--danger); }
+    button.small, .button.small { min-height: 32px; padding: 5px 10px; font-size: 13px; }
+    button.text-button {
+      min-height: auto;
+      border: 0;
+      padding: 3px;
+      background: transparent;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 600;
+    }
+    button.text-button:hover { background: transparent; color: var(--text); }
+
+    .connect-intro { max-width: 520px; margin-bottom: 24px; }
+    .connect-intro p { margin: 0; color: var(--muted); }
+    .steps { display: grid; gap: 22px; }
+    .step { display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 13px; }
+    .step-number {
+      display: grid;
+      width: 30px;
+      height: 30px;
+      place-items: center;
+      border-radius: 50%;
+      background: var(--soft);
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .step p { margin-bottom: 12px; color: var(--muted); }
+    .command, .field {
+      display: flex;
+      min-width: 0;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid var(--border);
+      border-radius: 11px;
+      padding: 6px 7px 6px 12px;
+      background: var(--soft);
+    }
+    code, .field output {
+      min-width: 0;
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+    .authorize-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+    .pending-controls { margin-top: 11px; color: var(--muted); font-size: 13px; }
+    .pending-controls button { margin-left: 5px; }
+
+    .message { margin: 14px 0 0; color: var(--muted); font-size: 13px; }
+    .message.error { color: var(--danger); }
+
+    .account-header { display: flex; gap: 20px; align-items: flex-start; justify-content: space-between; }
+    .account-email { overflow: hidden; margin: 0; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; }
+    .connection-badge {
+      display: inline-flex;
+      flex: 0 0 auto;
+      align-items: center;
+      gap: 7px;
+      border-radius: 999px;
+      padding: 5px 9px;
+      background: rgba(16, 163, 127, 0.1);
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .status-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+    .account-footer {
+      display: flex;
+      gap: 18px;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 20px;
+      border-top: 1px solid var(--border);
+      padding-top: 16px;
+    }
+    .account-links { display: flex; flex-wrap: wrap; gap: 18px; }
+    .account-link { color: var(--muted); font-size: 13px; font-weight: 600; text-decoration: none; }
+    .account-link:hover { color: var(--text); }
+
+    .model-summary { color: var(--muted); font-size: 13px; white-space: nowrap; }
+    .model-toolbar { display: flex; align-items: center; justify-content: flex-end; margin-top: 16px; }
+    .model-list { display: grid; margin-top: 8px; border-top: 1px solid var(--border); }
+    .model-row {
+      display: grid;
+      grid-template-columns: 20px minmax(0, 1fr) auto;
+      gap: 12px;
+      align-items: center;
+      min-height: 58px;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+    }
+    .model-row input { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); }
+    .model-row strong { display: block; overflow-wrap: anywhere; font-size: 14px; }
+    .model-row code { display: block; margin-top: 1px; color: var(--muted); font-size: 11px; }
+    .badge { border-radius: 999px; padding: 3px 8px; background: var(--soft); color: var(--muted); font-size: 11px; }
+    .model-row.unmanageable { cursor: default; opacity: 0.65; }
+    .model-empty { margin: 18px 0 0; color: var(--muted); }
+    .model-footer { display: flex; gap: 16px; align-items: center; justify-content: space-between; margin-top: 18px; }
+    .model-footer .message { flex: 1; margin: 0; }
+
+    .setup-body { display: grid; gap: 16px; }
+    .setup-body p { margin: 0; color: var(--muted); }
+    .setup-list { margin: 0; padding-left: 20px; color: var(--muted); }
+    .setup-list strong { color: var(--text); font-weight: 650; }
+
+    @media (max-width: 620px) {
+      .shell { padding-top: 32px; }
+      .card-heading, .model-footer { align-items: stretch; flex-direction: column; }
+      .account-footer { align-items: flex-start; flex-direction: column; }
+      .model-summary { white-space: normal; }
+      .model-row { grid-template-columns: 20px minmax(0, 1fr); padding: 10px 0; }
+      .model-row .badge { grid-column: 2; width: fit-content; }
+      .model-footer button { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header class="brand">
+      <img src="chatgpt.png" alt="">
+      <div>
+        <h1>ChatGPT Connect</h1>
+        <p>Use your ChatGPT plan in Open WebUI.</p>
+      </div>
+    </header>
+
+    <main>
+      <section class="card" id="connect-view">
+        <div class="card-body">
+          <div class="connect-intro">
+            <div class="eyebrow">Connect your account</div>
+            <h2>Continue with ChatGPT</h2>
+            <p>Open a temporary callback tunnel, then authorize this Open WebUI host.</p>
+          </div>
+
+          <div class="steps">
+            <div class="step">
+              <span class="step-number">1</span>
+              <div>
+                <h3>Open the callback tunnel</h3>
+                <p>Run this command on the computer where you will sign in, and leave it running.</p>
+                <div class="command">
+                  <code id="ssh-command">ssh -N -L 127.0.0.1:1455:127.0.0.1:8080 user@openwebui-host</code>
+                  <button type="button" class="secondary small" id="copy-command">Copy</button>
+                </div>
+              </div>
+            </div>
+            <div class="step">
+              <span class="step-number">2</span>
+              <div>
+                <h3>Authorize ChatGPT</h3>
+                <p>You can stop the tunnel as soon as authorization succeeds.</p>
+                <div class="authorize-row">
+                  <button type="button" id="continue-chatgpt">Continue with ChatGPT</button>
+                  <a class="button secondary small" id="open-chatgpt" target="_blank" rel="noopener noreferrer" hidden>Open ChatGPT</a>
+                </div>
+                <div class="pending-controls" id="pending-controls" hidden>
+                  Finish authorization in the ChatGPT tab.
+                  <button type="button" class="text-button" id="cancel-sign-in">Cancel</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <p class="message" id="connect-message" hidden></p>
+        </div>
+      </section>
+
+      <div class="stack" id="connected-view" hidden>
+        <section class="card">
+          <div class="card-body">
+            <div class="account-header">
+              <div>
+                <h2>ChatGPT account</h2>
+                <p class="account-email" id="account-email"></p>
+              </div>
+              <span class="connection-badge" role="status">
+                <span class="status-dot"></span>
+                Connected
+              </span>
+            </div>
+            <div class="account-footer">
+              <nav class="account-links" aria-label="ChatGPT account links">
+                <a class="account-link" href="https://chatgpt.com/settings/security" target="_blank" rel="noopener noreferrer">Security settings ↗</a>
+                <a class="account-link" href="https://chatgpt.com/settings/usage" target="_blank" rel="noopener noreferrer">Usage ↗</a>
+              </nav>
+              <button type="button" class="text-button danger" id="sign-out">Sign out</button>
+            </div>
+            <p class="message" id="account-message" hidden></p>
+          </div>
+        </section>
+
+        <section class="card" aria-labelledby="models-heading">
+          <div class="card-body">
+            <div class="card-heading">
+              <div>
+                <h2 id="models-heading">Models</h2>
+                <p>Choose which ChatGPT models appear in Open WebUI.</p>
+              </div>
+              <span class="model-summary" id="model-summary">Loading…</span>
+            </div>
+            <div class="model-toolbar">
+              <button type="button" class="text-button" id="select-all" disabled>Select all</button>
+            </div>
+            <div class="model-list" id="model-list" aria-live="polite"></div>
+            <p class="model-empty" id="model-empty">Loading available models…</p>
+            <div class="model-footer">
+              <p class="message" id="model-message" hidden></p>
+              <button type="button" id="save-models" disabled>Save changes</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="card setup">
+          <div class="card-body setup-body">
+            <div>
+              <h2>Set Up Open WebUI connection</h2>
+              <p>Add a native Responses connection using these settings.</p>
+            </div>
+            <div class="field">
+              <output id="endpoint">__BASE_URL__</output>
+              <button type="button" class="secondary small" id="copy-endpoint">Copy</button>
+            </div>
+            <ol class="setup-list">
+              <li>Use the URL shown above.</li>
+              <li>Choose <strong>Responses</strong> as the API type.</li>
+              <li>Use the same <strong>INTERNAL_API_KEY</strong> configured in Function Valves.</li>
+            </ol>
+            <p class="message" id="setup-message" hidden></p>
+          </div>
+        </section>
+      </div>
+    </main>
+
+  </div>
+
+  <script nonce="__NONCE__">
+    const isPreview = location.protocol === "file:";
+    const csrf = document.querySelector('meta[name="siwc-csrf"]').content;
+    const endpoint = isPreview
+      ? "https://openwebui.example.com/siwc/v1"
+      : document.querySelector('meta[name="siwc-endpoint"]').content;
+    const sshCommand = isPreview
+      ? "ssh -N -L 127.0.0.1:1455:127.0.0.1:8080 user@openwebui-host"
+      : document.querySelector('meta[name="siwc-ssh-command"]').content;
+    const initialStatus = isPreview
+      ? { connected: false, registered: false, pending: null, renewal_uncertain: false }
+      : JSON.parse(document.querySelector('meta[name="siwc-initial-state"]').content);
+    const element = (id) => document.getElementById(id);
+
+    let currentStatus = initialStatus;
+    let activeSshCommand = sshCommand;
+    let pollTimer = null;
+    let polling = false;
+    let modelEntries = null;
+    let enabledModels = new Set();
+    let savedModels = new Set();
+    let modelsNeedSave = false;
+
+    function showMessage(id, text, isError = false) {
+      const box = element(id);
+      box.textContent = text;
+      box.classList.toggle("error", isError);
+      box.hidden = !text;
+    }
+
+    function setBusy(button, busy) {
+      button.disabled = busy;
+      button.setAttribute("aria-busy", String(busy));
+    }
+
+    async function request(path, body) {
+      const options = { credentials: "same-origin", cache: "no-store" };
+      if (body !== undefined) {
+        options.method = "POST";
+        options.headers = { "Content-Type": "application/json", "X-SIWC-CSRF": csrf };
+        options.body = JSON.stringify(body);
+      }
+      const response = await fetch(`/siwc/admin/${path}`, options);
+      let data;
+      try {
+        data = await response.json();
+      } catch {
+        throw new Error(`Unexpected server response (HTTP ${response.status}).`);
+      }
+      if (!response.ok) {
+        throw new Error(typeof data.detail === "string" ? data.detail : `Request failed (HTTP ${response.status}).`);
+      }
+      return data;
+    }
+
+    async function run(button, action, messageId) {
+      setBusy(button, true);
+      try {
+        await action();
+      } catch (error) {
+        showMessage(messageId, error.message, true);
+      } finally {
+        setBusy(button, false);
+      }
+    }
+
+    async function copy(text, button) {
+      if (!text) throw new Error("Nothing to copy.");
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const input = document.createElement("textarea");
+        input.value = text;
+        input.style.position = "fixed";
+        input.style.opacity = "0";
+        document.body.appendChild(input);
+        input.select();
+        document.execCommand("copy");
+        input.remove();
+      }
+      const label = button.textContent;
+      button.textContent = "Copied";
+      setTimeout(() => { button.textContent = label; }, 1200);
+    }
+
+    function sameSelection(left, right) {
+      return left.size === right.size && [...left].every((id) => right.has(id));
+    }
+
+    function updateModelActions() {
+      const total = modelEntries?.length || 0;
+      element("model-summary").textContent = total
+        ? `${enabledModels.size} of ${total} enabled`
+        : "No models";
+      element("select-all").disabled = !total || enabledModels.size === total;
+      element("save-models").disabled = !total || !enabledModels.size || (
+        !modelsNeedSave && sameSelection(enabledModels, savedModels)
+      );
+    }
+
+    function renderModels(models) {
+      modelEntries = models;
+      enabledModels = new Set(models.filter((model) => model.enabled).map((model) => model.id));
+      savedModels = new Set(enabledModels);
+      modelsNeedSave = models.some((model) => model.manageable && !model.synchronized);
+      const list = element("model-list");
+      list.replaceChildren();
+      element("model-empty").hidden = Boolean(models.length);
+      element("model-empty").textContent = models.length ? "" : "No ChatGPT models are available.";
+
+      for (const model of models) {
+        const row = document.createElement("label");
+        row.className = `model-row${model.manageable ? "" : " unmanageable"}`;
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.checked = model.enabled;
+        checkbox.disabled = !model.manageable;
+        checkbox.addEventListener("change", () => {
+          if (checkbox.checked) enabledModels.add(model.id);
+          else enabledModels.delete(model.id);
+          showMessage("model-message", "");
+          updateModelActions();
+        });
+
+        const identity = document.createElement("span");
+        const name = document.createElement("strong");
+        name.textContent = model.name;
+        const id = document.createElement("code");
+        id.textContent = model.id;
+        identity.append(name, id);
+        row.append(checkbox, identity);
+        if (model.reasoning_efforts.length) {
+          const badge = document.createElement("span");
+          badge.className = "badge";
+          badge.textContent = "Reasoning";
+          row.append(badge);
+        }
+        list.append(row);
+      }
+      updateModelActions();
+    }
+
+    async function loadModels() {
+      element("model-summary").textContent = "Loading…";
+      element("model-empty").hidden = false;
+      element("model-empty").textContent = "Loading available models…";
+      element("select-all").disabled = true;
+      element("save-models").disabled = true;
+      try {
+        const data = await request("models");
+        renderModels(data.models);
+      } catch (error) {
+        modelEntries = null;
+        element("model-list").replaceChildren();
+        element("model-summary").textContent = "Unavailable";
+        element("model-empty").hidden = true;
+        showMessage("model-message", error.message, true);
+      }
+    }
+
+    function stopPolling() {
+      if (pollTimer !== null) clearTimeout(pollTimer);
+      pollTimer = null;
+    }
+
+    function schedulePoll(delay = 2000) {
+      if (!currentStatus.pending || pollTimer !== null) return;
+      pollTimer = setTimeout(pollStatus, delay);
+    }
+
+    function renderStatus(status) {
+      const wasConnected = currentStatus.connected;
+      currentStatus = status;
+      element("connect-view").hidden = status.connected;
+      element("connected-view").hidden = !status.connected;
+
+      if (status.connected) {
+        element("account-email").textContent = status.email || "ChatGPT account";
+        element("pending-controls").hidden = true;
+        element("open-chatgpt").hidden = true;
+        stopPolling();
+        if (!wasConnected || modelEntries === null) loadModels();
+      } else {
+        const pending = status.pending;
+        activeSshCommand = pending?.ssh_command || sshCommand;
+        element("ssh-command").textContent = activeSshCommand || "Set SSH_TARGET in Function Valves.";
+        element("copy-command").disabled = !activeSshCommand;
+        const canOpen = Boolean(pending?.authorize_path);
+        element("continue-chatgpt").textContent = pending
+          ? canOpen ? "Open ChatGPT" : "Finishing authorization…"
+          : "Continue with ChatGPT";
+        element("continue-chatgpt").disabled = !activeSshCommand || (Boolean(pending) && !canOpen);
+        element("pending-controls").hidden = !pending;
+        element("cancel-sign-in").hidden = !pending || pending.phase !== "waiting";
+        element("open-chatgpt").hidden = true;
+        if (status.renewal_uncertain) {
+          showMessage("connect-message", "Token renewal could not be confirmed. Sign in again before making another request.", true);
+        }
+        if (pending) schedulePoll();
+        else stopPolling();
+      }
+    }
+
+    async function pollStatus() {
+      pollTimer = null;
+      if (polling || !currentStatus.pending) return;
+      polling = true;
+      try {
+        const wasPending = Boolean(currentStatus.pending);
+        const status = await request("status");
+        renderStatus(status);
+        if (wasPending && !status.pending && !status.connected) {
+          showMessage("connect-message", "Authorization was not completed.", true);
+        }
+      } catch (error) {
+        showMessage("connect-message", error.message, true);
+        schedulePoll(4000);
+      } finally {
+        polling = false;
+      }
+    }
+
+    function openAuthorization(path, popup) {
+      if (popup) {
+        popup.opener = null;
+        popup.location.replace(path);
+        return;
+      }
+      const link = element("open-chatgpt");
+      link.href = path;
+      link.hidden = false;
+      showMessage("connect-message", "Your browser blocked the new tab. Use Open ChatGPT to continue.");
+    }
+
+    async function continueWithChatGPT() {
+      const button = element("continue-chatgpt");
+      const popup = window.open("about:blank", "_blank");
+      await run(button, async () => {
+        let path = currentStatus.pending?.authorize_path;
+        if (!path) {
+          const data = await request("start", {});
+          renderStatus(data.status);
+          path = data.authorize_path;
+        }
+        openAuthorization(path, popup);
+        showMessage("connect-message", "");
+      }, "connect-message");
+      if (!currentStatus.pending && popup && !popup.closed) popup.close();
+    }
+
+    element("endpoint").textContent = endpoint;
+
+    element("continue-chatgpt").addEventListener("click", continueWithChatGPT);
+    element("cancel-sign-in").addEventListener("click", () => run(element("cancel-sign-in"), async () => {
+      const result = await request("cancel", {});
+      renderStatus(result.status);
+      showMessage("connect-message", "Authorization canceled.");
+    }, "connect-message"));
+    element("copy-command").addEventListener("click", () => run(element("copy-command"), () =>
+      copy(activeSshCommand, element("copy-command")), "connect-message"
+    ));
+    element("copy-endpoint").addEventListener("click", () => run(element("copy-endpoint"), () =>
+      copy(endpoint, element("copy-endpoint")), "setup-message"
+    ));
+
+    element("select-all").addEventListener("click", () => {
+      if (!modelEntries) return;
+      enabledModels = new Set(modelEntries.map((model) => model.id));
+      element("model-list").querySelectorAll('input[type="checkbox"]').forEach((checkbox) => {
+        checkbox.checked = true;
+      });
+      showMessage("model-message", "");
+      updateModelActions();
+    });
+
+    element("save-models").addEventListener("click", () => run(element("save-models"), async () => {
+      const result = await request("models", { enabled: [...enabledModels] });
+      savedModels = new Set(enabledModels);
+      modelsNeedSave = false;
+      updateModelActions();
+      const refresh = await fetch("/api/models?refresh=true", {
+        credentials: "same-origin",
+        cache: "no-store"
+      });
+      if (!refresh.ok) {
+        throw new Error("Model choices were saved, but Open WebUI could not refresh its catalog. Reload Open WebUI to apply them.");
+      }
+      const preserved = result.custom_avatars_preserved
+        ? ` ${result.custom_avatars_preserved} custom avatar${result.custom_avatars_preserved === 1 ? " was" : "s were"} preserved.`
+        : "";
+      showMessage("model-message", `${result.enabled} models are available in Open WebUI.${preserved}`);
+    }, "model-message").finally(updateModelActions));
+
+    element("sign-out").addEventListener("click", () => {
+      if (!confirm("Sign out of ChatGPT in Open WebUI? The app remains in ChatGPT settings until you remove it there.")) return;
+      run(element("sign-out"), async () => {
+        const result = await request("sign-out", {});
+        modelEntries = null;
+        renderStatus(result.status);
+        showMessage(
+          "connect-message",
+          result.session_revocation_confirmed
+            ? "Signed out. You can remove the app separately in ChatGPT settings."
+            : "Signed out locally, but session revocation could not be confirmed. Remove the app in ChatGPT settings.",
+          !result.session_revocation_confirmed
+        );
+      }, "account-message");
+    });
+
+    renderStatus(initialStatus);
+    if (isPreview) {
+      showMessage("connect-message", "Static preview. Actions become available when this page is served by Open WebUI.");
+      document.querySelectorAll("button").forEach((button) => { button.disabled = true; });
+    }
+  </script>
+</body>
+</html>
