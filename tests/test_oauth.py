@@ -5,6 +5,7 @@ import base64
 import hashlib
 import json
 import time
+from types import SimpleNamespace
 from urllib.parse import parse_qs
 
 import httpx
@@ -21,7 +22,9 @@ async def test_login_uses_pkce_and_issued_client_without_webui_callback_cookie(h
     assert params["scope"] == [SCOPES]
     assert params["ext_agent_host_id"][0].startswith("urn:uuid:")
     assert params["redirect_uri"] == ["http://127.0.0.1:1455/api/v1/siwc/oauth/callback"]
-    assert result["ssh_command"] == (
+    assert set(result) == {"status"}
+    assert set(result["status"]) == {"connected", "email", "pending", "renewal_uncertain"}
+    assert result["status"]["pending"]["ssh_command"] == (
         "ssh -N -o ExitOnForwardFailure=yes -L 127.0.0.1:1455:127.0.0.1:8080 user@ct"
     )
     assert result["status"]["pending"]["phase"] == "waiting"
@@ -53,6 +56,19 @@ async def test_login_uses_pkce_and_issued_client_without_webui_callback_cookie(h
 async def test_invalid_callback_never_exchanges_code(harness, query):
     _, params = await harness.prepare()
     assert (await harness.callback(params, **query)).status_code == 400
+    assert not harness.upstream.calls("/api/accounts/oauth/token")
+
+
+async def test_expired_sign_in_cannot_be_resumed_or_completed(harness, monkeypatch):
+    started, params = await harness.prepare()
+    now = time.time() + 601
+    monkeypatch.setattr(
+        harness.module, "time", SimpleNamespace(time=lambda: now, monotonic=time.monotonic)
+    )
+    path = started["status"]["pending"]["authorize_path"]
+    assert (await harness.client.get(path)).status_code == 400
+    assert (await harness.callback(params)).status_code == 400
+    assert (await harness.status())["pending"] is None
     assert not harness.upstream.calls("/api/accounts/oauth/token")
 
 
@@ -108,7 +124,7 @@ async def test_declined_plan_permission_keeps_verified_registration(harness):
     harness.upstream.token_overrides = {"scope": "openid profile email", "refresh_token": None}
     await harness.connect()
     status = await harness.status()
-    assert status["registered"] and not status["connected"]
+    assert not status["connected"]
     assert status["email"] is None
     assert (await harness.models()).status_code == 403
 

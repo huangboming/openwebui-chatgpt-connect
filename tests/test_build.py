@@ -33,10 +33,13 @@ def test_delivery_metadata_comes_from_project(artifact):
         line.split(": ", 1)
         for line in ast.get_docstring(ast.parse(artifact.read_text())).splitlines()
     )
-    assert metadata["author"] == project["project"]["authors"][0]["name"] == "huangboming"
-    assert metadata["version"] == project["project"]["version"] == "0.1.0"
+    assert metadata["author"] == project["project"]["authors"][0]["name"]
+    assert metadata["version"] == project["project"]["version"]
     assert metadata["requirements"] == ",".join(project["project"]["dependencies"])
-    assert metadata["required_open_webui_version"] == "0.11.4"
+    assert (
+        metadata["required_open_webui_version"]
+        == project["tool"]["openwebui-chatgpt-connect"]["required-open-webui-version"]
+    )
 
 
 async def test_copied_artifact_registers_without_project_imports(harness):

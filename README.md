@@ -2,7 +2,7 @@
 
 Bring your ChatGPT models to Open WebUI through OpenAI's official [**Sign in with ChatGPT**](https://developers.openai.com/siwc) flow.
 
-A single Open WebUI Function provides streaming text chats, thinking blocks, reasoning effort controls, and an admin page for account and model management. Sessions are saved and renewed automatically.
+A single Open WebUI Function provides streaming text chats, reasoning effort controls, and an admin page for account and model management. Model-provided reasoning summaries appear as thinking blocks. Sessions are saved and renewed automatically.
 
 ## Requirements
 
@@ -69,7 +69,7 @@ Select a `ChatGPT/` model in Open WebUI to start chatting. Available models and 
 
 ### Reasoning
 
-Reasoning summaries appear in Open WebUI's thinking blocks. Set **Reasoning Effort** in **Advanced Parameters** to adjust it for models that offer this option. Effort levels vary by model.
+When a model returns [reasoning summaries](https://developers.openai.com/api/docs/guides/reasoning#reasoning-summaries), Open WebUI displays them as thinking blocks. Set **Reasoning Effort** in **Advanced Parameters** to adjust it for models that offer this option. Effort levels vary by model.
 
 ### Account
 
@@ -92,6 +92,8 @@ A sign-in that was in progress during an update needs to be started again.
 
 <details>
 <summary>Development</summary>
+
+Admin page interaction tests also use [Node.js](https://nodejs.org/).
 
 Install dependencies and run the checks:
 

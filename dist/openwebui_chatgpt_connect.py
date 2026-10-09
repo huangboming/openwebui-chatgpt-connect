@@ -809,7 +809,7 @@ ADMIN_HTML = r"""<!doctype html>
       ? "ssh -N -L 127.0.0.1:1455:127.0.0.1:8080 user@openwebui-host"
       : document.querySelector('meta[name="siwc-ssh-command"]').content;
     const initialStatus = isPreview
-      ? { connected: false, registered: false, pending: null, renewal_uncertain: false }
+      ? { connected: false, pending: null, renewal_uncertain: false }
       : JSON.parse(document.querySelector('meta[name="siwc-initial-state"]').content);
     const element = (id) => document.getElementById(id);
 
@@ -894,7 +894,8 @@ ADMIN_HTML = r"""<!doctype html>
         ? `${enabledModels.size} of ${total} enabled`
         : "No models";
       element("select-all").disabled = !total || enabledModels.size === total;
-      element("save-models").disabled = !total || !enabledModels.size || (
+      const save = element("save-models");
+      save.disabled = save.getAttribute("aria-busy") === "true" || !total || !enabledModels.size || (
         !modelsNeedSave && sameSelection(enabledModels, savedModels)
       );
     }
@@ -1041,7 +1042,7 @@ ADMIN_HTML = r"""<!doctype html>
         if (!path) {
           const data = await request("start", {});
           renderStatus(data.status);
-          path = data.authorize_path;
+          path = data.status.pending.authorize_path;
         }
         openAuthorization(path, popup);
         showMessage("connect-message", "");
@@ -1075,8 +1076,9 @@ ADMIN_HTML = r"""<!doctype html>
     });
 
     element("save-models").addEventListener("click", () => run(element("save-models"), async () => {
-      const result = await request("models", { enabled: [...enabledModels] });
-      savedModels = new Set(enabledModels);
+      const submittedModels = new Set(enabledModels);
+      const result = await request("models", { enabled: [...submittedModels] });
+      savedModels = submittedModels;
       modelsNeedSave = false;
       updateModelActions();
       const refresh = await fetch("/api/models?refresh=true", {
@@ -1211,18 +1213,15 @@ class AdminRoutes:
         )
         return {
             "connected": connected,
-            "registered": bool(registration.get("client_id")),
             "email": registration.get("email") if connected else None,
-            "revision": state["revision"],
             "renewal_uncertain": bool(tokens.get("refresh_in_flight")),
             "pending": {
                 "phase": self._pending["phase"],
-                "expires_at": self._pending["expires_at"],
                 "ssh_command": self._pending["ssh_command"]
-                if self._pending["phase"] == "waiting" and not self._pending["consumed"]
+                if self._pending["phase"] == "waiting"
                 else None,
                 "authorize_path": self._pending["authorize_path"]
-                if self._pending["phase"] == "waiting" and not self._pending["consumed"]
+                if self._pending["phase"] == "waiting"
                 else None,
             }
             if self._pending
@@ -1320,22 +1319,13 @@ class AdminRoutes:
                 "host_id": state["ext_agent_host_id"],
                 "expires_at": time.time() + 600,
                 "request_consent": body.request_consent or plan_permission is False,
-                "consumed": False,
                 "phase": "waiting",
                 "ssh_command": command,
                 "authorize_path": f"/siwc/authorize/{attempt_id}",
             }
             self._pending = pending
             status = self._status_payload(state)
-        return JSONResponse(
-            {
-                "ssh_command": command,
-                "authorize_path": pending["authorize_path"],
-                "expires_at": pending["expires_at"],
-                "status": status,
-            },
-            headers=NO_STORE,
-        )
+        return JSONResponse({"status": status}, headers=NO_STORE)
 
     async def authorize(self, attempt_id: str, request: Request, user=Depends(get_admin_user)):
         await self._admin_request(request, user)
@@ -1344,7 +1334,7 @@ class AdminRoutes:
             not pending
             or pending["id"] != attempt_id
             or pending["owner_id"] != user.id
-            or pending["consumed"]
+            or pending["phase"] != "waiting"
             or pending["expires_at"] <= time.time()
         ):
             raise HTTPException(
@@ -1395,7 +1385,7 @@ class AdminRoutes:
             pending = self._pending
             valid = (
                 pending is not None
-                and not pending["consumed"]
+                and pending["phase"] == "waiting"
                 and pending["expires_at"] > time.time()
                 and len(query.getlist("state")) == 1
                 and hmac.compare_digest(query.get("state", "").encode(), pending["state"].encode())
@@ -1410,7 +1400,6 @@ class AdminRoutes:
                 return self._callback_page(
                     "The authorization callback contains duplicate parameters.", 400
                 )
-            pending["consumed"] = True
             pending["phase"] = "exchanging"
             candidate = None
             client_id = None
@@ -1832,7 +1821,7 @@ def catalog_snapshot(data: dict) -> CatalogSnapshot:
     return CatalogSnapshot(tuple(models), time.monotonic())
 
 
-def reasoning_payload(body: dict, model: CatalogModel | None) -> dict | None:
+def reasoning_parameters(body: dict) -> dict | None:
     raw = body.get("reasoning")
     if raw is not None and not isinstance(raw, dict):
         raise HTTPException(400, "reasoning must be an object.")
@@ -1847,7 +1836,19 @@ def reasoning_payload(body: dict, model: CatalogModel | None) -> dict | None:
     if nested_effort and flat_effort and nested_effort != flat_effort:
         raise HTTPException(400, "reasoning.effort and reasoning_effort select different values.")
     effort = nested_effort or flat_effort
+    if effort:
+        reasoning["effort"] = effort
+    else:
+        reasoning.pop("effort", None)
+    return reasoning if raw is not None or effort else None
+
+
+def reasoning_payload(reasoning: dict | None, model: CatalogModel | None) -> dict | None:
     supported = model.reasoning_efforts if model else ()
+    if reasoning is None and not supported:
+        return None
+    reasoning = reasoning or {}
+    effort = reasoning.get("effort")
     if effort and supported and effort not in supported:
         raise HTTPException(
             400,
@@ -1855,18 +1856,12 @@ def reasoning_payload(body: dict, model: CatalogModel | None) -> dict | None:
         )
     if effort and not supported and effort not in KNOWN_REASONING_EFFORTS:
         raise HTTPException(400, f"Unsupported reasoning effort: {effort}.")
-    if effort:
-        reasoning["effort"] = effort
-    elif reasoning.get("effort") is None:
-        reasoning.pop("effort", None)
-    if raw is not None or effort or supported:
-        if reasoning.get("summary") is None:
-            reasoning["summary"] = "auto"
-        return reasoning
-    return None
+    if reasoning.get("summary") is None:
+        reasoning["summary"] = "auto"
+    return reasoning
 
 
-def text_payload(body: dict, model_info: CatalogModel | None = None) -> dict:
+def text_payload(body: dict) -> dict:
     model = body.get("model")
     if not isinstance(model, str) or not model:
         raise HTTPException(400, "A model is required.")
@@ -1948,7 +1943,7 @@ def text_payload(body: dict, model_info: CatalogModel | None = None) -> dict:
         raise HTTPException(400, "include must be an array of strings.")
     forwarded = ("instructions", "text", "service_tier", "prompt_cache_key")
     payload = {key: body[key] for key in forwarded if body.get(key) is not None}
-    reasoning = reasoning_payload(body, model_info)
+    reasoning = reasoning_parameters(body)
     if reasoning is not None:
         payload["reasoning"] = reasoning
     payload.update(
@@ -2023,8 +2018,106 @@ class ClosingStreamingResponse(StreamingResponse):
             await asyncio.shield(self.close_upstream())
 
 
+class ReasoningSummaries:
+    """Preserve public summaries and their paragraph boundaries for Open WebUI."""
+
+    def __init__(self):
+        self._parts: dict[int, list[dict]] = {}
+        self._indexes: dict[str, int] = {}
+
+    def _part(self, output_index: int, summary_index: int, part: dict) -> dict:
+        if not isinstance(summary_index, int) or summary_index < 0:
+            raise ValueError("invalid reasoning summary index")
+        parts = self._parts.setdefault(output_index, [])
+        while len(parts) <= summary_index:
+            parts.append({"type": "summary_text", "text": ""})
+        previous = parts[summary_index]
+        merged = {**previous, **part}
+        if not part.get("text") and previous.get("text"):
+            merged["text"] = previous["text"]
+        parts[summary_index] = merged
+        return merged
+
+    def _display_part(self, output_index: int, summary_index: int) -> dict:
+        parts = self._parts[output_index]
+        part = dict(parts[summary_index])
+        text = part.get("text", "")
+        previous = next(
+            (part.get("text") for part in reversed(parts[:summary_index]) if part.get("text")),
+            "",
+        )
+        # Open WebUI concatenates summary parts without inserting a separator.
+        if (
+            text
+            and previous
+            and not text.startswith(("\n", "\r"))
+            and not previous.endswith(("\n", "\r"))
+        ):
+            part["text"] = f"\n\n{text}"
+        return part
+
+    def _item(self, item: dict, output_index: int) -> dict:
+        if item.get("type") != "reasoning":
+            return item
+        if item.get("id"):
+            self._indexes[item["id"]] = output_index
+        for index, part in enumerate(item.get("summary") or []):
+            self._part(output_index, index, part)
+        parts = self._parts.get(output_index)
+        if not parts:
+            return item
+        summary = [self._display_part(output_index, index) for index in range(len(parts))]
+        return item if summary == item.get("summary") else {**item, "summary": summary}
+
+    def apply(self, event: dict) -> dict:
+        kind = event["type"]
+        if kind == "response.completed":
+            response = event["response"]
+            output = [
+                self._item(item, self._indexes.get(item.get("id"), index))
+                for index, item in enumerate(response["output"])
+            ]
+            return {**event, "response": {**response, "output": output}}
+
+        output_index = event.get("output_index", self._indexes.get(event.get("item_id")))
+        if not isinstance(output_index, int) or output_index < 0:
+            return event
+        if kind in {"response.output_item.added", "response.output_item.done"}:
+            item = event.get("item")
+            return (
+                {**event, "item": self._item(item, output_index)}
+                if isinstance(item, dict)
+                else event
+            )
+        if not kind.startswith("response.reasoning_summary_"):
+            return event
+
+        summary_index = event.get("summary_index", 0)
+        if kind in {
+            "response.reasoning_summary_part.added",
+            "response.reasoning_summary_part.done",
+        }:
+            incoming = event.get("part")
+            if isinstance(incoming, dict):
+                self._part(output_index, summary_index, incoming)
+                return {**event, "part": self._display_part(output_index, summary_index)}
+        elif kind == "response.reasoning_summary_text.delta" and isinstance(
+            event.get("delta"), str
+        ):
+            part = self._part(output_index, summary_index, {})
+            first_text = not part["text"] and bool(event["delta"])
+            part["text"] += event["delta"]
+            if first_text:
+                return {**event, "delta": self._display_part(output_index, summary_index)["text"]}
+        elif kind == "response.reasoning_summary_text.done" and isinstance(event.get("text"), str):
+            self._part(output_index, summary_index, {"text": event["text"]})
+            return {**event, "text": self._display_part(output_index, summary_index)["text"]}
+        return event
+
+
 async def checked_events(result: httpx.Response):
     request_id = result.headers.get("x-request-id")
+    summaries = ReasoningSummaries()
     try:
         async for event in sse_events(result):
             kind = event.get("type", "")
@@ -2051,7 +2144,7 @@ async def checked_events(result: httpx.Response):
                         request_id,
                     )
                     return
-                yield event
+                yield summaries.apply(event)
                 return
             if kind == "response.failed":
                 error = (event.get("response") or {}).get("error")
@@ -2078,7 +2171,7 @@ async def checked_events(result: httpx.Response):
                 yield {"type": "response.failed", "response": {"status": "failed", "error": error}}
                 return
             if isinstance(kind, str) and kind.startswith("response."):
-                yield event
+                yield summaries.apply(event)
         yield failure_event(
             "The stream ended before response.completed. The request was not retried.",
             request_id=request_id,
@@ -2110,18 +2203,12 @@ class ResponsesAPI:
                         f"{RESOURCE}/models", headers={"Authorization": f"Bearer {access}"}
                     )
             except httpx.HTTPError:
-                if not force and snapshot:
-                    return snapshot
                 raise HTTPException(503, "Could not reach the OpenAI model catalog.") from None
             if result.status_code != 200:
-                if not force and snapshot:
-                    return snapshot
                 raise CatalogUpstreamError(result)
             try:
                 snapshot = catalog_snapshot(result.json())
             except (ValueError, KeyError, TypeError, AttributeError):
-                if not force and self._snapshot:
-                    return self._snapshot
                 raise HTTPException(
                     502, "The OpenAI model catalog did not match the SIWC schema."
                 ) from None
@@ -2191,11 +2278,11 @@ class ResponsesAPI:
             raise HTTPException(
                 400, "The request must be a JSON object and stream must be a boolean."
             )
-        cached_model = self._snapshot.find(body.get("model")) if self._snapshot else None
-        payload = text_payload(body, cached_model)
-        model_info = await self._model(body.get("model"))
-        if model_info != cached_model:
-            payload = text_payload(body, model_info)
+        payload = text_payload(body)
+        model_info = await self._model(payload["model"])
+        reasoning = reasoning_payload(payload.get("reasoning"), model_info)
+        if reasoning is not None:
+            payload["reasoning"] = reasoning
         access = await self.auth.access_token()
         client = httpx.AsyncClient(
             timeout=httpx.Timeout(120, connect=20, write=30, pool=20), follow_redirects=False

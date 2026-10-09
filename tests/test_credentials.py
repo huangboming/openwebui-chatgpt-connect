@@ -24,7 +24,7 @@ async def test_sign_out_ends_the_session_but_reuses_the_registered_client(harnes
     assert response.status_code == 200
     assert response.json()["session_revocation_confirmed"]
     status = await harness.status()
-    assert status["registered"] and not status["connected"]
+    assert not status["connected"]
     assert status["email"] is None
     assert "account@example.test" not in (await harness.page()).text
     assert (await harness.models()).status_code == 503

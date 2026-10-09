@@ -56,7 +56,7 @@ async def test_terminal_refresh_error_requires_login_not_new_registration(harnes
     assert (await harness.models()).status_code == 401
     assert (await harness.models()).status_code == 503
     status = await harness.status()
-    assert status["registered"] and not status["connected"]
+    assert not status["connected"]
     _, params = await harness.prepare()
     assert params["client_id"] == ["issued-client"]
     assert len(harness.upstream.calls("/api/accounts/oauth/token")) == 2

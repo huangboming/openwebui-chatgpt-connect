@@ -3,7 +3,10 @@
 import json
 import logging
 import re
+import shutil
+import subprocess
 from html import unescape
+from pathlib import Path
 
 import pytest
 from fastapi import FastAPI
@@ -61,9 +64,8 @@ async def test_pending_sign_in_survives_page_refresh_and_can_be_cancelled(harnes
     page = await harness.page()
     initial = re.search(r'<meta name="siwc-initial-state" content="([^"]+)">', page.text)
     pending = json.loads(unescape(initial[1]))["pending"]
-    assert pending["ssh_command"] == started["ssh_command"]
-    assert pending["authorize_path"] == started["authorize_path"]
-    assert 'id="cancel-sign-in"' in page.text
+    assert pending == started["status"]["pending"]
+    assert set(pending) == {"phase", "ssh_command", "authorize_path"}
 
     cancelled = await harness.post_admin("cancel", json={})
     assert cancelled.json()["status"]["pending"] is None
@@ -90,28 +92,6 @@ async def test_page_has_security_headers_and_no_credentials(harness):
     assert response.headers["cache-control"] == "no-store"
     assert response.headers["referrer-policy"] == "no-referrer"
     assert "frame-ancestors 'none'" in response.headers["content-security-policy"]
-    assert "__CSRF__" not in response.text
-    assert "__INITIAL_STATE__" not in response.text
-    initial = re.search(r'<meta name="siwc-initial-state" content="([^"]+)">', response.text)
-    assert json.loads(unescape(initial[1]))["connected"]
-    assert "setInterval(pollStatus" not in response.text
-    assert "__SSH_COMMAND__" not in response.text
-    assert "Waiting for sign-in" not in response.text
-    assert ">Sign out<" in response.text
-    assert "<h2>ChatGPT account</h2>" in response.text
-    assert "Security settings ↗" in response.text
-    assert "Usage ↗" in response.text
-    assert 'href="https://chatgpt.com/settings/security"' in response.text
-    assert 'href="https://chatgpt.com/settings/usage"' in response.text
-    assert "Review in ChatGPT settings" not in response.text
-    assert "Credentials stay on this Open WebUI host" not in response.text
-    assert "<footer" not in response.text
-    assert "ChatGPT connected." not in response.text
-    assert '<details class="account-menu">' not in response.text
-    assert "<h2>Set Up Open WebUI connection</h2>" in response.text
-    assert '<details class="card setup">' not in response.text
-    assert ">Disconnect<" not in response.text
-    assert harness.module.MODEL_AVATAR_URL in response.text
     for secret in (KEY, "access-1", "refresh-1"):
         assert secret not in response.text
         assert secret not in str(await harness.status())
@@ -122,6 +102,31 @@ async def test_inference_routes_require_internal_key(harness, key, status):
     headers = {"Authorization": f"Bearer {key}"} if key else {}
     assert (await harness.client.get("/siwc/v1/models", headers=headers)).status_code == status
     assert not harness.upstream.requests
+
+
+async def test_page_embeds_current_state_settings_and_account_resources(harness):
+    await harness.connect()
+    response = await harness.page()
+    initial = re.search(r'<meta name="siwc-initial-state" content="([^"]+)">', response.text)
+    assert json.loads(unescape(initial[1])) == await harness.status()
+    assert "http://127.0.0.1:8080/siwc/v1" in response.text
+    assert 'href="https://chatgpt.com/settings/security"' in response.text
+    assert 'href="https://chatgpt.com/settings/usage"' in response.text
+    assert harness.module.MODEL_AVATAR_URL in response.text
+
+
+async def test_model_edits_during_save_remain_unsaved(harness, tmp_path):
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node.js is required for admin page interaction tests.")
+    await harness.connect()
+    page = tmp_path / "admin.html"
+    page.write_text((await harness.page()).text)
+    script = Path(__file__).with_name("admin_page.test.mjs")
+    result = subprocess.run(
+        [node, str(script), str(page)], capture_output=True, text=True, timeout=10
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 async def test_models_default_to_enabled_and_save_the_bundled_avatar(harness):

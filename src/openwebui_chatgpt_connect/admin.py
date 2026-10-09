@@ -134,18 +134,15 @@ class AdminRoutes:
         )
         return {
             "connected": connected,
-            "registered": bool(registration.get("client_id")),
             "email": registration.get("email") if connected else None,
-            "revision": state["revision"],
             "renewal_uncertain": bool(tokens.get("refresh_in_flight")),
             "pending": {
                 "phase": self._pending["phase"],
-                "expires_at": self._pending["expires_at"],
                 "ssh_command": self._pending["ssh_command"]
-                if self._pending["phase"] == "waiting" and not self._pending["consumed"]
+                if self._pending["phase"] == "waiting"
                 else None,
                 "authorize_path": self._pending["authorize_path"]
-                if self._pending["phase"] == "waiting" and not self._pending["consumed"]
+                if self._pending["phase"] == "waiting"
                 else None,
             }
             if self._pending
@@ -243,22 +240,13 @@ class AdminRoutes:
                 "host_id": state["ext_agent_host_id"],
                 "expires_at": time.time() + 600,
                 "request_consent": body.request_consent or plan_permission is False,
-                "consumed": False,
                 "phase": "waiting",
                 "ssh_command": command,
                 "authorize_path": f"/siwc/authorize/{attempt_id}",
             }
             self._pending = pending
             status = self._status_payload(state)
-        return JSONResponse(
-            {
-                "ssh_command": command,
-                "authorize_path": pending["authorize_path"],
-                "expires_at": pending["expires_at"],
-                "status": status,
-            },
-            headers=NO_STORE,
-        )
+        return JSONResponse({"status": status}, headers=NO_STORE)
 
     async def authorize(self, attempt_id: str, request: Request, user=Depends(get_admin_user)):
         await self._admin_request(request, user)
@@ -267,7 +255,7 @@ class AdminRoutes:
             not pending
             or pending["id"] != attempt_id
             or pending["owner_id"] != user.id
-            or pending["consumed"]
+            or pending["phase"] != "waiting"
             or pending["expires_at"] <= time.time()
         ):
             raise HTTPException(
@@ -318,7 +306,7 @@ class AdminRoutes:
             pending = self._pending
             valid = (
                 pending is not None
-                and not pending["consumed"]
+                and pending["phase"] == "waiting"
                 and pending["expires_at"] > time.time()
                 and len(query.getlist("state")) == 1
                 and hmac.compare_digest(query.get("state", "").encode(), pending["state"].encode())
@@ -333,7 +321,6 @@ class AdminRoutes:
                 return self._callback_page(
                     "The authorization callback contains duplicate parameters.", 400
                 )
-            pending["consumed"] = True
             pending["phase"] = "exchanging"
             candidate = None
             client_id = None

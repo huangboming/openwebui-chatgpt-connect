@@ -265,7 +265,8 @@ class Harness:
     async def prepare(self, consent=False):
         response = await self.post_admin("start", json={"request_consent": consent})
         assert response.status_code == 200
-        entry = await self.client.get(response.json()["authorize_path"], follow_redirects=False)
+        path = response.json()["status"]["pending"]["authorize_path"]
+        entry = await self.client.get(path, follow_redirects=False)
         assert entry.status_code == 303
         params = parse_qs(urlsplit(entry.headers["location"]).query)
         self.upstream.nonce = params["nonce"][0]

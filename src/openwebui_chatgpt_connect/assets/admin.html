@@ -350,7 +350,7 @@
       ? "ssh -N -L 127.0.0.1:1455:127.0.0.1:8080 user@openwebui-host"
       : document.querySelector('meta[name="siwc-ssh-command"]').content;
     const initialStatus = isPreview
-      ? { connected: false, registered: false, pending: null, renewal_uncertain: false }
+      ? { connected: false, pending: null, renewal_uncertain: false }
       : JSON.parse(document.querySelector('meta[name="siwc-initial-state"]').content);
     const element = (id) => document.getElementById(id);
 
@@ -435,7 +435,8 @@
         ? `${enabledModels.size} of ${total} enabled`
         : "No models";
       element("select-all").disabled = !total || enabledModels.size === total;
-      element("save-models").disabled = !total || !enabledModels.size || (
+      const save = element("save-models");
+      save.disabled = save.getAttribute("aria-busy") === "true" || !total || !enabledModels.size || (
         !modelsNeedSave && sameSelection(enabledModels, savedModels)
       );
     }
@@ -582,7 +583,7 @@
         if (!path) {
           const data = await request("start", {});
           renderStatus(data.status);
-          path = data.authorize_path;
+          path = data.status.pending.authorize_path;
         }
         openAuthorization(path, popup);
         showMessage("connect-message", "");
@@ -616,8 +617,9 @@
     });
 
     element("save-models").addEventListener("click", () => run(element("save-models"), async () => {
-      const result = await request("models", { enabled: [...enabledModels] });
-      savedModels = new Set(enabledModels);
+      const submittedModels = new Set(enabledModels);
+      const result = await request("models", { enabled: [...submittedModels] });
+      savedModels = submittedModels;
       modelsNeedSave = false;
       updateModelActions();
       const refresh = await fetch("/api/models?refresh=true", {
