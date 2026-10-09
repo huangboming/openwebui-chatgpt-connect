@@ -2,7 +2,7 @@
 
 Bring your ChatGPT models to Open WebUI through OpenAI's official [**Sign in with ChatGPT**](https://developers.openai.com/siwc) flow.
 
-A single Open WebUI Function provides streaming text chats, reasoning effort controls, and an admin page for account and model management. Model-provided reasoning summaries appear as thinking blocks. Sessions are saved and renewed automatically.
+A single Open WebUI Function provides streaming chats with text and image inputs, reasoning effort controls, and an admin page for account and model management. Model-provided reasoning summaries appear as thinking blocks. Sessions are saved and renewed automatically.
 
 ## Requirements
 
@@ -66,6 +66,12 @@ Existing permissions, parameters, custom names, and avatars are preserved.
 ## Usage
 
 Select a `ChatGPT/` model in Open WebUI to start chatting. Available models and usage limits follow [your ChatGPT plan](https://help.openai.com/en/articles/20001542-using-your-chatgpt-plan-in-other-apps-and-sites) and workspace.
+
+### Images
+
+Upload one or more images in the chat composer to read screenshots, compare photos, or ask about visible text. Later messages can refer back to the same images.
+
+Use a model with [vision support](https://developers.openai.com/api/docs/guides/images-vision#analyze-images). Supported formats are PNG, JPEG, WEBP, and non-animated GIF.
 
 ### Reasoning
 

@@ -2,7 +2,7 @@
 title: ChatGPT Connect
 author: huangboming
 description: Connect Open WebUI to ChatGPT subscriptions through the official SIWC API.
-version: 0.1.0
+version: 0.2.0
 required_open_webui_version: 0.11.4
 requirements: httpx,PyJWT[crypto]
 """
@@ -1861,7 +1861,45 @@ def reasoning_payload(reasoning: dict | None, model: CatalogModel | None) -> dic
     return reasoning
 
 
-def text_payload(body: dict) -> dict:
+def image_part(part: dict) -> dict:
+    if part.get("file_id") is not None:
+        raise HTTPException(400, "SIWC does not support image file IDs; use image_url.")
+    image_url = part.get("image_url")
+    if not isinstance(image_url, str) or not image_url:
+        raise HTTPException(400, "image_url must be an HTTPS URL or a base64 image data URL.")
+    if image_url.startswith("data:"):
+        header, _, encoded = image_url.partition(",")
+        media_type, _, encoding = header.removeprefix("data:").partition(";")
+        if media_type not in ("image/png", "image/jpeg", "image/webp", "image/gif") or (
+            encoding != "base64"
+        ):
+            raise HTTPException(400, "Image data URLs must use base64 PNG, JPEG, WEBP, or GIF.")
+        try:
+            if not base64.b64decode(encoded, validate=True):
+                raise ValueError("empty image")
+        except ValueError:
+            raise HTTPException(400, "Image data must contain valid, non-empty base64.") from None
+    else:
+        try:
+            url = urlsplit(image_url)
+            valid = (
+                url.scheme == "https"
+                and bool(url.hostname)
+                and url.username is None
+                and url.password is None
+                and not any(char.isspace() for char in image_url)
+            )
+        except ValueError:
+            valid = False
+        if not valid:
+            raise HTTPException(400, "image_url must be an HTTPS URL without credentials.")
+    detail = part.get("detail", "auto")
+    if detail not in ("auto", "low", "high", "original"):
+        raise HTTPException(400, "Image detail must be auto, low, high, or original.")
+    return {"type": "input_image", "image_url": image_url, "detail": detail}
+
+
+def responses_payload(body: dict) -> dict:
     model = body.get("model")
     if not isinstance(model, str) or not model:
         raise HTTPException(400, "A model is required.")
@@ -1877,7 +1915,7 @@ def text_payload(body: dict) -> dict:
     if stateful_field:
         raise HTTPException(
             400,
-            f"The text-only connector does not support {stateful_field}; send full history instead.",
+            f"This connector does not support {stateful_field}; send full history instead.",
         )
     if body.get("background"):
         raise HTTPException(400, "SIWC does not support background requests.")
@@ -1911,7 +1949,7 @@ def text_payload(body: dict) -> dict:
                 )
             continue
         if kind != "message":
-            raise HTTPException(400, "Tool calls and other non-text history are not supported.")
+            raise HTTPException(400, "History must contain messages or replayable reasoning.")
 
         role = "developer" if item.get("role") == "system" else item.get("role")
         if role not in ("user", "assistant", "developer"):
@@ -1923,21 +1961,22 @@ def text_payload(body: dict) -> dict:
         elif isinstance(content, list):
             parts = []
             for part in content:
-                if (
-                    not isinstance(part, dict)
-                    or part.get("type") not in ("input_text", "output_text", "text")
-                    or not isinstance(part.get("text"), str)
-                ):
-                    raise HTTPException(
-                        400, "Images, files, and other non-text content are not supported."
-                    )
-                parts.append({"type": text_type, "text": part["text"]})
+                if not isinstance(part, dict):
+                    raise HTTPException(400, "Unsupported message content part.")
+                if part.get("type") in ("input_text", "output_text", "text"):
+                    if not isinstance(part.get("text"), str):
+                        raise HTTPException(400, "Text content must contain a string.")
+                    parts.append({"type": text_type, "text": part["text"]})
+                elif part.get("type") == "input_image":
+                    parts.append(image_part(part))
+                else:
+                    raise HTTPException(400, "Message content must contain text or images.")
         else:
             raise HTTPException(400, "Unsupported message content.")
         items.append({"type": "message", "role": role, "content": parts})
 
     if not items:
-        raise HTTPException(400, "Input does not contain usable text context.")
+        raise HTTPException(400, "Input does not contain usable conversation context.")
     include = body.get("include") or []
     if not isinstance(include, list) or not all(isinstance(value, str) for value in include):
         raise HTTPException(400, "include must be an array of strings.")
@@ -1953,7 +1992,7 @@ def text_payload(body: dict) -> dict:
         stream=True,
         include=list(dict.fromkeys([*include, "reasoning.encrypted_content"])),
     )
-    # Open WebUI adds tool declarations to text chats. This connector intentionally omits them.
+    # Open WebUI adds tool declarations to chats. This connector intentionally omits them.
     return payload
 
 
@@ -2278,7 +2317,7 @@ class ResponsesAPI:
             raise HTTPException(
                 400, "The request must be a JSON object and stream must be a boolean."
             )
-        payload = text_payload(body)
+        payload = responses_payload(body)
         model_info = await self._model(payload["model"])
         reasoning = reasoning_payload(payload.get("reasoning"), model_info)
         if reasoning is not None:
