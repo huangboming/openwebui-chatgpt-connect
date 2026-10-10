@@ -2,26 +2,40 @@
 
 import importlib.util
 import logging
-import subprocess
 import sys
-from pathlib import Path
 from types import ModuleType, SimpleNamespace
 
 import httpx
 import pytest
 
+from scripts.build import artifacts
 from tests.support import REAL_ASYNC_CLIENT, Harness, Host, OpenAI, WorkspaceModelForm
-
-ROOT = Path(__file__).resolve().parents[1]
 
 
 @pytest.fixture(scope="session")
-def artifact(tmp_path_factory):
-    path = tmp_path_factory.mktemp("function") / "connect.py"
-    subprocess.run(
-        [sys.executable, str(ROOT / "scripts/build.py"), "--output", str(path)], check=True
-    )
-    return path
+def built_artifacts(tmp_path_factory):
+    directory = tmp_path_factory.mktemp("functions")
+    for name, content in artifacts().items():
+        (directory / name).write_text(content, encoding="utf-8")
+    return directory
+
+
+@pytest.fixture(scope="session")
+def artifact(built_artifacts):
+    return built_artifacts / "openwebui_chatgpt_connect.py"
+
+
+@pytest.fixture(scope="session")
+def filter_artifact(built_artifacts):
+    return built_artifacts / "chatgpt_responses_history.py"
+
+
+@pytest.fixture
+def history_filter(filter_artifact):
+    spec = importlib.util.spec_from_file_location("_built_history_filter", filter_artifact)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.Filter()
 
 
 @pytest.fixture

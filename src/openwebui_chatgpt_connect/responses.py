@@ -24,6 +24,7 @@ STATEFUL_FIELDS = (
 TOKEN_LIMIT_FIELDS = ("max_output_tokens", "max_tokens", "max_completion_tokens")
 KNOWN_REASONING_EFFORTS = frozenset({"none", "minimal", "low", "medium", "high", "xhigh", "max"})
 CATALOG_TTL = 300
+TOOL_NAMESPACE = "openwebui"
 
 
 @dataclass(frozen=True)
@@ -38,6 +39,7 @@ class CatalogModel:
             "name": self.name if self.name.startswith("ChatGPT/") else f"ChatGPT/{self.name}",
             "object": "model",
             "owned_by": "openai",
+            "source": "chatgpt-connect",
         }
 
 
@@ -176,6 +178,104 @@ def image_part(part: dict) -> dict:
     return {"type": "input_image", "image_url": image_url, "detail": detail}
 
 
+def content_parts(content, text_type: str) -> list[dict]:
+    if isinstance(content, str):
+        return [{"type": text_type, "text": content}]
+    if not isinstance(content, list):
+        raise HTTPException(400, "Unsupported message content.")
+    parts = []
+    for part in content:
+        if not isinstance(part, dict):
+            raise HTTPException(400, "Unsupported message content part.")
+        if part.get("type") in ("input_text", "output_text", "text"):
+            if not isinstance(part.get("text"), str):
+                raise HTTPException(400, "Text content must contain a string.")
+            parts.append({"type": text_type, "text": part["text"]})
+        elif part.get("type") == "input_image":
+            parts.append(image_part(part))
+        else:
+            raise HTTPException(400, "Message content must contain text or images.")
+    return parts
+
+
+def tool_parameters(body: dict) -> dict:
+    tools = body.get("tools", [])
+    if tools is None:
+        tools = []
+    if not isinstance(tools, list):
+        raise HTTPException(400, "tools must be an array of function definitions.")
+    functions = []
+    names = set()
+    for tool in tools:
+        if not isinstance(tool, dict) or tool.get("type") != "function":
+            raise HTTPException(400, "This connector supports Open WebUI function tools only.")
+        callers = tool.get("allowed_callers")
+        if (
+            tool.get("defer_loading")
+            or tool.get("async")
+            or (
+                callers is not None
+                and (not isinstance(callers, list) or any(caller != "direct" for caller in callers))
+            )
+        ):
+            raise HTTPException(400, "Only directly executed function tools are supported.")
+        name = tool.get("name")
+        if not isinstance(name, str) or not name or name in names:
+            raise HTTPException(400, "Tool names must be non-empty and unique.")
+        names.add(name)
+        functions.append(
+            {
+                key: tool[key]
+                for key in ("type", "name", "description", "parameters", "strict")
+                if key in tool
+            }
+        )
+    payload = {}
+    if functions:
+        payload["tools"] = [
+            {
+                "type": "namespace",
+                "name": TOOL_NAMESPACE,
+                "description": "Tools selected and executed by Open WebUI.",
+                "tools": functions,
+            }
+        ]
+    choice = body.get("tool_choice")
+    if choice not in (None, "auto", "none", "required"):
+        raise HTTPException(400, "tool_choice must be auto, none, or required.")
+    if choice == "required" and not functions:
+        raise HTTPException(400, "tool_choice=required needs at least one function tool.")
+    if choice is not None:
+        payload["tool_choice"] = choice
+    parallel = body.get("parallel_tool_calls")
+    if parallel is not None:
+        if not isinstance(parallel, bool):
+            raise HTTPException(400, "parallel_tool_calls must be a boolean.")
+        payload["parallel_tool_calls"] = parallel
+    return payload
+
+
+def tool_history(item: dict) -> dict:
+    call_id = item.get("call_id")
+    if not isinstance(call_id, str) or not call_id:
+        raise HTTPException(400, "Tool history must contain a call_id.")
+    if item.get("namespace") not in (None, TOOL_NAMESPACE):
+        raise HTTPException(400, "Tool history contains an unsupported namespace.")
+    result = {"type": item["type"], "call_id": call_id}
+    if item["type"] == "function_call":
+        if not isinstance(item.get("name"), str) or not item["name"]:
+            raise HTTPException(400, "Function calls must contain a name.")
+        if not isinstance(item.get("arguments"), str):
+            raise HTTPException(400, "Function arguments must be a JSON string.")
+        result.update(name=item["name"], arguments=item["arguments"], namespace=TOOL_NAMESPACE)
+    else:
+        output = item.get("output")
+        result["output"] = (
+            output if isinstance(output, str) else content_parts(output, "input_text")
+        )
+    return result
+
+
 def responses_payload(body: dict) -> dict:
     model = body.get("model")
     if not isinstance(model, str) or not model:
@@ -200,8 +300,7 @@ def responses_payload(body: dict) -> dict:
         raise HTTPException(400, "Use Responses text.format instead of response_format.")
     if body.get("truncation") not in (None, "disabled"):
         raise HTTPException(400, "Automatic history truncation is not supported.")
-    if body.get("tool_choice") not in (None, "auto", "none"):
-        raise HTTPException(400, "Forced tool calls are not supported.")
+    tools = tool_parameters(body)
 
     raw_input = body.get("input")
     if isinstance(raw_input, str):
@@ -210,6 +309,8 @@ def responses_payload(body: dict) -> dict:
         raise HTTPException(400, "Input must contain the complete conversation history.")
 
     items = []
+    calls = set()
+    results = set()
     for item in raw_input:
         if not isinstance(item, dict):
             raise HTTPException(400, "Unsupported input item.")
@@ -225,33 +326,35 @@ def responses_payload(body: dict) -> dict:
                     }
                 )
             continue
+        if kind in ("function_call", "function_call_output"):
+            history = tool_history(item)
+            call_id = history["call_id"]
+            if kind == "function_call":
+                if call_id in calls:
+                    raise HTTPException(400, "Tool history contains a duplicate call_id.")
+                calls.add(call_id)
+            else:
+                if call_id not in calls or call_id in results:
+                    raise HTTPException(
+                        400, "Each tool result must follow its matching function call."
+                    )
+                results.add(call_id)
+            items.append(history)
+            continue
         if kind != "message":
-            raise HTTPException(400, "History must contain messages or replayable reasoning.")
+            raise HTTPException(400, "History contains an unsupported Responses item.")
 
         role = "developer" if item.get("role") == "system" else item.get("role")
         if role not in ("user", "assistant", "developer"):
             raise HTTPException(400, "Unsupported message role.")
         text_type = "output_text" if role == "assistant" else "input_text"
-        content = item.get("content", "")
-        if isinstance(content, str):
-            parts = [{"type": text_type, "text": content}]
-        elif isinstance(content, list):
-            parts = []
-            for part in content:
-                if not isinstance(part, dict):
-                    raise HTTPException(400, "Unsupported message content part.")
-                if part.get("type") in ("input_text", "output_text", "text"):
-                    if not isinstance(part.get("text"), str):
-                        raise HTTPException(400, "Text content must contain a string.")
-                    parts.append({"type": text_type, "text": part["text"]})
-                elif part.get("type") == "input_image":
-                    parts.append(image_part(part))
-                else:
-                    raise HTTPException(400, "Message content must contain text or images.")
-        else:
-            raise HTTPException(400, "Unsupported message content.")
+        parts = content_parts(item.get("content", ""), text_type)
         items.append({"type": "message", "role": role, "content": parts})
 
+    if calls != results:
+        raise HTTPException(
+            400, "Complete tool history must include a result for each function call."
+        )
     if not items:
         raise HTTPException(400, "Input does not contain usable conversation context.")
     include = body.get("include") or []
@@ -269,16 +372,8 @@ def responses_payload(body: dict) -> dict:
         stream=True,
         include=list(dict.fromkeys([*include, "reasoning.encrypted_content"])),
     )
-    # Open WebUI adds tool declarations to chats. This connector intentionally omits them.
+    payload.update(tools)
     return payload
-
-
-class StreamError(Exception):
-    def __init__(self, error: dict, request_id: str | None = None):
-        self.error = error
-        self.request_id = request_id
-        self.status = ERROR_STATUS.get(error.get("code"), 502)
-        super().__init__(str(error.get("message", "The SIWC response did not complete.")))
 
 
 async def sse_events(response: httpx.Response):
@@ -438,9 +533,14 @@ async def checked_events(result: httpx.Response):
         async for event in sse_events(result):
             kind = event.get("type", "")
             item = event.get("item") or {}
-            if isinstance(item, dict) and item.get("type") not in (None, "message", "reasoning"):
+            if isinstance(item, dict) and item.get("type") not in (
+                None,
+                "message",
+                "reasoning",
+                "function_call",
+            ):
                 yield failure_event(
-                    "The upstream response requested an unsupported non-text action.",
+                    "The upstream response requested an unsupported action.",
                     "siwc_unsupported_output",
                     request_id,
                 )
@@ -452,10 +552,11 @@ async def checked_events(result: httpx.Response):
                 ):
                     raise ValueError("invalid completed response")
                 if any(
-                    item.get("type") not in ("message", "reasoning") for item in response["output"]
+                    item.get("type") not in ("message", "reasoning", "function_call")
+                    for item in response["output"]
                 ):
                     yield failure_event(
-                        "The upstream response contained unsupported non-text output.",
+                        "The upstream response contained unsupported output.",
                         "siwc_unsupported_output",
                         request_id,
                     )
@@ -654,14 +755,13 @@ class ResponsesAPI:
                 if event["type"] == "response.completed":
                     return JSONResponse(event["response"], headers=headers)
                 if event["type"] == "response.failed":
-                    failure = StreamError(
-                        event["response"]["error"], result.headers.get("x-request-id")
-                    )
-                    error = dict(failure.error)
-                    if failure.request_id:
-                        error["request_id"] = failure.request_id
+                    error = dict(event["response"]["error"])
+                    if request_id := result.headers.get("x-request-id"):
+                        error["request_id"] = request_id
                     return JSONResponse(
-                        {"error": error}, status_code=failure.status, headers=headers
+                        {"error": error},
+                        status_code=ERROR_STATUS.get(error.get("code"), 502),
+                        headers=headers,
                     )
             raise HTTPException(502, "The upstream stream ended without response.completed.")
         finally:

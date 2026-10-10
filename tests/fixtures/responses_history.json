@@ -1,0 +1,227 @@
+{
+  "open_webui_version": "0.11.4",
+  "source": "https://github.com/open-webui/open-webui/blob/v0.11.4/backend/open_webui/utils/misc.py",
+  "cases": [
+    {
+      "name": "preface-and-interleaved-tools",
+      "messages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "Use the read-only tool."
+            },
+            {
+              "type": "image_url",
+              "image_url": {
+                "url": "https://example.test/image.png"
+              }
+            }
+          ]
+        },
+        {
+          "role": "assistant",
+          "content": "Checking the marker.",
+          "tool_calls": [
+            {
+              "id": "call-marker",
+              "type": "function",
+              "function": {
+                "name": "get_marker",
+                "arguments": "{}"
+              }
+            },
+            {
+              "id": "call-second",
+              "type": "function",
+              "function": {
+                "name": "get_marker",
+                "arguments": "{}"
+              }
+            }
+          ],
+          "reasoning_details": [
+            {
+              "type": "reasoning.encrypted",
+              "format": "openai-responses-v1",
+              "source": "chatgpt-connect",
+              "model": "catalog-model",
+              "id": "reasoning-tool",
+              "data": "opaque-tool-context",
+              "summary": [],
+              "before_call_id": "call-marker"
+            },
+            {
+              "type": "reasoning.encrypted",
+              "format": "openai-responses-v1",
+              "source": "chatgpt-connect",
+              "model": "catalog-model",
+              "id": "reasoning-second",
+              "data": "opaque-second-context",
+              "summary": [],
+              "before_call_id": "call-second"
+            }
+          ]
+        },
+        {
+          "role": "tool",
+          "tool_call_id": "call-marker",
+          "content": "Tool execution was rejected by the user."
+        },
+        {
+          "role": "tool",
+          "tool_call_id": "call-second",
+          "content": "Tool failed: unavailable."
+        },
+        {
+          "role": "user",
+          "content": "Continue."
+        }
+      ],
+      "input": [
+        {
+          "type": "message",
+          "role": "user",
+          "content": [
+            {
+              "type": "input_text",
+              "text": "Use the read-only tool."
+            },
+            {
+              "type": "input_image",
+              "image_url": "https://example.test/image.png",
+              "detail": "auto"
+            }
+          ]
+        },
+        {
+          "type": "reasoning",
+          "summary": [],
+          "encrypted_content": "opaque-tool-context",
+          "id": "reasoning-tool"
+        },
+        {
+          "type": "message",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "output_text",
+              "text": "Checking the marker."
+            }
+          ]
+        },
+        {
+          "type": "function_call",
+          "call_id": "call-marker",
+          "name": "get_marker",
+          "arguments": "{}"
+        },
+        {
+          "type": "reasoning",
+          "summary": [],
+          "encrypted_content": "opaque-second-context",
+          "id": "reasoning-second"
+        },
+        {
+          "type": "function_call",
+          "call_id": "call-second",
+          "name": "get_marker",
+          "arguments": "{}"
+        },
+        {
+          "type": "function_call_output",
+          "call_id": "call-marker",
+          "output": "Tool execution was rejected by the user."
+        },
+        {
+          "type": "function_call_output",
+          "call_id": "call-second",
+          "output": "Tool failed: unavailable."
+        },
+        {
+          "type": "message",
+          "role": "user",
+          "content": [
+            {
+              "type": "input_text",
+              "text": "Continue."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "cancelled-unpaired-call",
+      "messages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "Use the read-only tool."
+            },
+            {
+              "type": "image_url",
+              "image_url": {
+                "url": "https://example.test/image.png"
+              }
+            }
+          ]
+        },
+        {
+          "role": "assistant",
+          "content": "",
+          "reasoning_details": [
+            {
+              "type": "reasoning.encrypted",
+              "format": "openai-responses-v1",
+              "source": "chatgpt-connect",
+              "model": "catalog-model",
+              "id": "reasoning-tool",
+              "data": "opaque-tool-context",
+              "summary": []
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": "Continue."
+        }
+      ],
+      "input": [
+        {
+          "type": "message",
+          "role": "user",
+          "content": [
+            {
+              "type": "input_text",
+              "text": "Use the read-only tool."
+            },
+            {
+              "type": "input_image",
+              "image_url": "https://example.test/image.png",
+              "detail": "auto"
+            }
+          ]
+        },
+        {
+          "type": "reasoning",
+          "summary": [],
+          "encrypted_content": "opaque-tool-context",
+          "id": "reasoning-tool"
+        },
+        {
+          "type": "message",
+          "role": "user",
+          "content": [
+            {
+              "type": "input_text",
+              "text": "Continue."
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

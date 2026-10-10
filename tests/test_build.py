@@ -1,30 +1,46 @@
-"""Contracts of the standalone delivery asset and the build command."""
+"""Contracts of the two standalone deliveries and their fixed build script."""
 
 import ast
 import base64
+import shutil
 import subprocess
 import sys
 import tomllib
 from pathlib import Path
 
+import pytest
+
+from scripts.build import artifacts
+
 ROOT = Path(__file__).resolve().parents[1]
-BUILD = ROOT / "scripts/build.py"
 
 
-def test_artifact_is_current():
-    subprocess.run([sys.executable, str(BUILD), "--check"], check=True)
+@pytest.mark.parametrize("name", ["openwebui_chatgpt_connect.py", "chatgpt_responses_history.py"])
+def test_deliveries_are_current(built_artifacts, name):
+    assert (ROOT / "dist" / name).read_bytes() == (built_artifacts / name).read_bytes()
 
 
-def test_build_is_deterministic_and_independent_of_working_directory(tmp_path, artifact):
-    output = tmp_path / "another.py"
-    subprocess.run([sys.executable, str(BUILD), "--output", str(output)], cwd=tmp_path, check=True)
-    assert output.read_bytes() == artifact.read_bytes()
-    output.write_text("# stale\n")
-    check = subprocess.run(
-        [sys.executable, str(BUILD), "--output", str(output), "--check"], capture_output=True
+def test_generation_is_deterministic_from_another_working_directory(
+    tmp_path, monkeypatch, built_artifacts
+):
+    monkeypatch.chdir(tmp_path)
+    for name, source in artifacts().items():
+        assert source == (built_artifacts / name).read_text(encoding="utf-8")
+
+
+def test_script_generates_both_deliveries_in_its_project(tmp_path, built_artifacts):
+    project = tmp_path / "project"
+    shutil.copytree(ROOT / "src", project / "src")
+    shutil.copytree(
+        ROOT / "scripts", project / "scripts", ignore=shutil.ignore_patterns("__pycache__")
     )
-    assert check.returncode == 1
-    assert output.read_text() == "# stale\n"
+    shutil.copy2(ROOT / "pyproject.toml", project / "pyproject.toml")
+    subprocess.run([sys.executable, str(project / "scripts/build.py")], cwd=tmp_path, check=True)
+    output = project / "dist"
+    expected = list(built_artifacts.glob("*.py"))
+    assert {path.name for path in output.iterdir()} == {path.name for path in expected}
+    for path in expected:
+        assert (output / path.name).read_bytes() == path.read_bytes()
 
 
 def test_delivery_metadata_comes_from_project(artifact):
@@ -40,6 +56,18 @@ def test_delivery_metadata_comes_from_project(artifact):
         metadata["required_open_webui_version"]
         == project["tool"]["openwebui-chatgpt-connect"]["required-open-webui-version"]
     )
+
+
+def test_history_filter_is_an_independent_delivery(filter_artifact, history_filter):
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text())
+    tree = ast.parse(filter_artifact.read_text())
+    metadata = dict(line.split(": ", 1) for line in ast.get_docstring(tree).splitlines())
+    assert metadata["title"] == "ChatGPT Responses History"
+    assert metadata["version"] == project["project"]["version"]
+    assert metadata["author"] == project["project"]["authors"][0]["name"]
+    assert "requirements" not in metadata
+    assert {node.name for node in tree.body if isinstance(node, ast.ClassDef)} == {"Filter"}
+    assert hasattr(history_filter, "stream") and hasattr(history_filter, "request")
 
 
 async def test_copied_artifact_registers_without_project_imports(harness):

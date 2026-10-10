@@ -1,41 +1,41 @@
 # ChatGPT Connect for Open WebUI
 
-Bring your ChatGPT models to Open WebUI through OpenAI's official [**Sign in with ChatGPT**](https://developers.openai.com/siwc) flow.
+Use your **ChatGPT subscription** in Open WebUI through OpenAI's official [**Sign in with ChatGPT**](https://developers.openai.com/siwc) flow.
 
-A single Open WebUI Function provides streaming chats with text and image inputs, reasoning effort controls, and an admin page for account and model management. Model-provided reasoning summaries appear as thinking blocks. Sessions are saved and renewed automatically.
+Chat with text and images, use Open WebUI Tools, and adjust reasoning effort. Manage your account and available models from a dedicated settings page.
 
 ## Requirements
 
 - Open WebUI **0.11.4 or later**, running with one worker
 - Administrator access to Open WebUI
-- A ChatGPT account eligible for Sign in with ChatGPT
+- A ChatGPT account eligible for [plan usage in other apps](https://developers.openai.com/siwc/token-sharing-open-source)
 - SSH access from your computer to the machine running Open WebUI
 
-Use one installed Function for one ChatGPT account. A temporary SSH tunnel handles sign-in; chats use the saved session.
+Each installation connects one ChatGPT account. Sign-in uses a temporary SSH tunnel; your session is saved and renewed as you chat.
 
-## Install
+## Set up
 
-### 1. Add the Function
+### 1. Install the connector
 
 1. Open [**Functions**](https://docs.openwebui.com/features/extensibility/plugin/functions/#create-manually) in the Open WebUI admin panel.
-2. Create an **Event Function** and paste [`dist/openwebui_chatgpt_connect.py`](dist/openwebui_chatgpt_connect.py).
+2. Create an **Event Function** and paste the contents of [`dist/openwebui_chatgpt_connect.py`](dist/openwebui_chatgpt_connect.py).
 3. Save and enable it.
 
-Open the Function's Valves and set:
+Open the Function's **Valves** and set:
 
 | Valve | Value |
 | --- | --- |
-| `INTERNAL_API_KEY` | A random secret of at least 32 characters, shared with the Open WebUI connection. |
+| `INTERNAL_API_KEY` | A random secret of at least 32 characters. You will also use it for the connection in step 3. |
 | `SSH_TARGET` | Your Open WebUI host's SSH destination, such as `user@example.com` or an alias from `~/.ssh/config`. |
 | `CALLBACK_PORT` | A free port on your computer. Default: `1455`. |
 
-Generate a key with:
+You can generate an API key with:
 
 ```sh
 openssl rand -hex 32
 ```
 
-### 2. Connect ChatGPT
+### 2. Sign in to ChatGPT
 
 Open `/siwc/admin` on your Open WebUI instance:
 
@@ -43,79 +43,83 @@ Open `/siwc/admin` on your Open WebUI instance:
 https://your-open-webui.example/siwc/admin
 ```
 
-1. Copy the SSH command and run it in a terminal on your computer.
+1. Copy the SSH command.
+
+   **Docker:** If SSH connects to the Docker host, use the published HTTP port as the tunnel's remote target. For `-p 3000:8080`, replace `:127.0.0.1:8080` with `:127.0.0.1:3000` in the copied command. Keep the local `CALLBACK_PORT` unchanged.
+
+   Run the command in a terminal on your computer.
 2. Select **Continue with ChatGPT** and finish signing in.
 3. Once the page shows your account, stop the SSH command with `Ctrl+C`.
 
-### 3. Set up the Open WebUI connection
+### 3. Add the Open WebUI connection
 
-Use the **Set Up Open WebUI connection** section on the admin page to add a native [Responses connection](https://docs.openwebui.com/getting-started/quick-start/connect-a-provider/starting-with-open-responses/#step-1-add-or-edit-a-connection):
+In **Set Up Open WebUI connection** on the settings page, copy the URL and add a [Responses connection](https://docs.openwebui.com/getting-started/quick-start/connect-a-provider/starting-with-open-responses/#step-1-add-or-edit-a-connection) in Open WebUI:
 
 | Setting | Value |
 | --- | --- |
-| URL | Copy from the admin page |
+| URL | Copy from the settings page |
 | API type | `Responses` |
 | API key | Your `INTERNAL_API_KEY` |
 
+Keep **Responses API stateful mode** off, which is the default.
+
 ### 4. Choose your models
 
-All available models are selected by default. Choose the models you want in Open WebUI and select **Save changes**.
+All available models are selected by default. Choose the models you want on `/siwc/admin` and select **Save changes**.
 
-Existing permissions, parameters, custom names, and avatars are preserved.
+Everyone with access to these models uses the connected ChatGPT account and its plan or workspace usage allowance. Manage access in Open WebUI's model permissions.
 
-## Usage
+Your existing model permissions, parameters, custom names, and avatars are preserved.
 
-Select a `ChatGPT/` model in Open WebUI to start chatting. Available models and usage limits follow [your ChatGPT plan](https://help.openai.com/en/articles/20001542-using-your-chatgpt-plan-in-other-apps-and-sites) and workspace.
+### 5. Enable tools (optional)
 
-### Images
+1. Create a **Filter Function** and paste the contents of [`dist/chatgpt_responses_history.py`](dist/chatgpt_responses_history.py).
+2. Save, enable it, and turn on **Global**. It applies only to models from this connector.
+3. Open `/api/models?refresh=true` on your Open WebUI instance, then reload the page.
+4. Use **Native** function calling with streaming enabled, and enable the Tools you want in your chat.
 
-Upload one or more images in the chat composer to read screenshots, compare photos, or ask about visible text. Later messages can refer back to the same images.
+## Everyday use
 
-Use a model with [vision support](https://developers.openai.com/api/docs/guides/images-vision#analyze-images). Supported formats are PNG, JPEG, WEBP, and non-animated GIF.
+Select a `ChatGPT/` model to start chatting. Requests draw on [your ChatGPT plan](https://help.openai.com/en/articles/20001542-using-your-chatgpt-plan-in-other-apps-and-sites)'s included usage or your ChatGPT credits balance. Available models and limits depend on your plan and workspace.
 
-### Reasoning
+Review usage and manage limits in [ChatGPT usage settings](https://chatgpt.com/settings/usage).
 
-When a model returns [reasoning summaries](https://developers.openai.com/api/docs/guides/reasoning#reasoning-summaries), Open WebUI displays them as thinking blocks. Set **Reasoning Effort** in **Advanced Parameters** to adjust it for models that offer this option. Effort levels vary by model.
+### Images and documents
 
-### Account
+Upload one or more images in the chat composer to read screenshots, compare photos, or ask about visible text. You can refer back to those images in later messages.
 
-The admin page links to ChatGPT security settings and usage information.
+Choose a model with [vision support](https://developers.openai.com/api/docs/guides/images-vision#analyze-images). Supported formats are PNG, JPEG, WEBP, and non-animated GIF.
 
-- **Sign out** ends the ChatGPT session saved on this Open WebUI host.
+Images go directly to the selected model. For documents, use Open WebUI's document processing and knowledge features to provide extracted or retrieved text to the model.
+
+### Thinking and reasoning effort
+
+When a model provides [reasoning summaries](https://developers.openai.com/api/docs/guides/reasoning#reasoning-summaries), they appear as thinking blocks in Open WebUI.
+
+Set **Reasoning Effort** in **Advanced Parameters** for models that offer this option. Available effort levels depend on the selected model.
+
+### Tools
+
+Enable [Open WebUI Tools](https://docs.openwebui.com/features/extensibility/plugin/tools/) in your chat to let the model use them. Tool calls and results appear in the conversation, with permissions and confirmations managed by Open WebUI.
+
+### Account settings
+
+Open `/siwc/admin` to manage your account and model selection.
+
+- **Usage** opens your ChatGPT usage information.
+- **Sign out** ends the session on this Open WebUI host.
 - **Security settings** opens [ChatGPT settings](https://chatgpt.com/settings/security), where you can remove the app under **Login connections**.
 
-### Updates
+## Update
 
-Replace the Function code with the latest `dist/openwebui_chatgpt_connect.py` and save. Updates take effect in place and preserve your saved session. Refresh the admin page to see the changes.
+Replace the code in the existing connector Function with the latest [`dist/openwebui_chatgpt_connect.py`](dist/openwebui_chatgpt_connect.py) and save. If you use tools, update the Filter with [`dist/chatgpt_responses_history.py`](dist/chatgpt_responses_history.py) as well.
 
-A sign-in that was in progress during an update needs to be started again.
+Changes take effect when you save, and your ChatGPT session is preserved. Open `/api/models?refresh=true` on your Open WebUI instance, then reload the page. If you were signing in during the update, start sign-in again.
 
 ## Troubleshooting
 
-- **Sign-in does not finish:** check that the SSH command is running and `CALLBACK_PORT` is free. Cancel the pending sign-in on the admin page and try again.
-- **Models do not appear:** enable the native Responses connection, save your model selection on `/siwc/admin`, and reload Open WebUI.
-- **OAuth callback audit warning:** add `siwc/oauth/callback` to `AUDIT_EXCLUDED_PATHS` and restart Open WebUI before signing in.
-
-<details>
-<summary>Development</summary>
-
-Admin page interaction tests also use [Node.js](https://nodejs.org/).
-
-Install dependencies and run the checks:
-
-```sh
-uv sync
-uv run ruff check .
-uv run ruff format --check .
-uv run pytest
-```
-
-Build the standalone Function:
-
-```sh
-uv run python scripts/build.py
-```
-
-Output: `dist/openwebui_chatgpt_connect.py`.
-
-</details>
+- **Sign-in does not finish:** check that the SSH command is running and `CALLBACK_PORT` is free. Cancel sign-in on the settings page and try again.
+- **Models do not appear:** check that the Responses connection is enabled, save your model selection on `/siwc/admin`, and reload Open WebUI.
+- **Tools stop after the first call:** check that the companion Filter is enabled with **Global** on. Refresh models at `/api/models?refresh=true` and start a new chat using **Native** function calling and streaming.
+- **Usage limit reached:** open [ChatGPT usage settings](https://chatgpt.com/settings/usage) to review your plan or this app's limit.
+- **Callback logging warning during sign-in:** add `siwc/oauth/callback` to Open WebUI's `AUDIT_EXCLUDED_PATHS` and restart Open WebUI before signing in.

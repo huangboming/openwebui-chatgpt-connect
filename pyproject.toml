@@ -1,6 +1,6 @@
 [project]
 name = "openwebui-chatgpt-connect"
-version = "0.2.0"
+version = "0.3.0"
 description = "Connect Open WebUI to ChatGPT subscriptions through the official SIWC API."
 authors = [{ name = "huangboming" }]
 readme = "README.md"
@@ -24,10 +24,6 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/openwebui_chatgpt_connect"]
-
-[tool.hatch.build.targets.wheel.force-include]
-"src/openwebui_chatgpt_connect/assets/admin.html" = "openwebui_chatgpt_connect/assets/admin.html"
-"src/openwebui_chatgpt_connect/assets/chatgpt.png" = "openwebui_chatgpt_connect/assets/chatgpt.png"
 
 [tool.openwebui-chatgpt-connect]
 title = "ChatGPT Connect"

@@ -19,6 +19,12 @@ WEBUI_URL = "https://webui.example.test:8080"
 SCOPES = "openid profile email offline_access resource.invoke chatgpt.tokens.use.direct"
 
 
+def events(response):
+    return [
+        json.loads(line[6:]) for line in response.text.splitlines() if line.startswith("data: ")
+    ]
+
+
 class WorkspaceModelForm(BaseModel):
     id: str
     base_model_id: str | None = None

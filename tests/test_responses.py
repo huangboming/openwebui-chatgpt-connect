@@ -7,13 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from tests.support import KEY
-
-
-def events(response):
-    return [
-        json.loads(line[6:]) for line in response.text.splitlines() if line.startswith("data: ")
-    ]
+from tests.support import KEY, events
 
 
 def reasoning_stream(texts, delivery, item_id="reasoning-1", output_index=0):
@@ -97,6 +91,7 @@ async def test_catalog_adapts_visible_models_without_hardcoding(harness):
                 "name": "ChatGPT/Catalog Model",
                 "object": "model",
                 "owned_by": "openai",
+                "source": "chatgpt-connect",
             }
         ],
     }
@@ -131,7 +126,9 @@ async def test_text_request_preserves_history_and_applies_siwc_constraints(harne
     assert payload["store"] is False and payload["stream"] is True
     assert payload["include"] == ["reasoning.encrypted_content"]
     assert payload["reasoning"] == {"summary": "auto"}
-    assert not {"tools", "tool_choice", "temperature", "metadata"} & payload.keys()
+    assert not {"temperature", "metadata"} & payload.keys()
+    assert payload["tool_choice"] == "auto"
+    assert payload["tools"][0]["tools"] == [{"type": "function", "name": "unused"}]
     assert payload["input"] == [
         {
             "type": "message",
@@ -534,7 +531,7 @@ async def test_non_stream_task_returns_completed_response(harness):
             [
                 {
                     "type": "response.output_item.added",
-                    "item": {"type": "function_call", "name": "danger"},
+                    "item": {"type": "image_generation_call"},
                 }
             ],
             "siwc_unsupported_output",
@@ -543,7 +540,10 @@ async def test_non_stream_task_returns_completed_response(harness):
             [
                 {
                     "type": "response.completed",
-                    "response": {"status": "completed", "output": [{"type": "function_call"}]},
+                    "response": {
+                        "status": "completed",
+                        "output": [{"type": "image_generation_call"}],
+                    },
                 }
             ],
             "siwc_unsupported_output",
