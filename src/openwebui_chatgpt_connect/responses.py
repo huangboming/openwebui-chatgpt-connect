@@ -209,12 +209,18 @@ def tool_parameters(body: dict) -> dict:
     if tools is None:
         tools = []
     if not isinstance(tools, list):
-        raise HTTPException(400, "tools must be an array of function definitions.")
+        raise HTTPException(400, "tools must be an array of function or web search definitions.")
     functions = []
+    hosted = []
     names = set()
     for tool in tools:
+        if isinstance(tool, dict) and tool.get("type") == "web_search":
+            if hosted or set(tool) != {"type"}:
+                raise HTTPException(400, "Supply one web_search tool with default settings.")
+            hosted.append({"type": "web_search"})
+            continue
         if not isinstance(tool, dict) or tool.get("type") != "function":
-            raise HTTPException(400, "This connector supports Open WebUI function tools only.")
+            raise HTTPException(400, "Only Open WebUI function tools and web_search are supported.")
         callers = tool.get("allowed_callers")
         if (
             tool.get("defer_loading")
@@ -246,11 +252,13 @@ def tool_parameters(body: dict) -> dict:
                 "tools": functions,
             }
         ]
+    if hosted:
+        payload["tools"] = [*payload.get("tools", []), *hosted]
     choice = body.get("tool_choice")
     if choice not in (None, "auto", "none", "required"):
         raise HTTPException(400, "tool_choice must be auto, none, or required.")
-    if choice == "required" and not functions:
-        raise HTTPException(400, "tool_choice=required needs at least one function tool.")
+    if choice == "required" and not (functions or hosted):
+        raise HTTPException(400, "tool_choice=required needs at least one tool.")
     if choice is not None:
         payload["tool_choice"] = choice
     parallel = body.get("parallel_tool_calls")
@@ -331,6 +339,16 @@ def responses_payload(body: dict) -> dict:
                         if key in item
                     }
                 )
+            continue
+        if kind == "web_search_call":
+            if (
+                not isinstance(item.get("id"), str)
+                or not item["id"]
+                or item.get("status") not in ("completed", "failed")
+                or not isinstance(item.get("action"), dict)
+            ):
+                raise HTTPException(400, "Invalid web search history item.")
+            items.append({key: item[key] for key in ("type", "id", "status", "action")})
             continue
         if kind in ("function_call", "function_call_output"):
             history = tool_history(item)
@@ -542,19 +560,17 @@ class ReasoningSummaries:
         return event
 
 
-async def checked_events(result: httpx.Response):
+async def checked_events(result: httpx.Response, *, allow_web_search: bool = False):
     request_id = result.headers.get("x-request-id")
     summaries = ReasoningSummaries()
+    supported = {"message", "reasoning", "function_call"}
+    if allow_web_search:
+        supported.add("web_search_call")
     try:
         async for event in sse_events(result):
             kind = event.get("type", "")
             item = event.get("item") or {}
-            if isinstance(item, dict) and item.get("type") not in (
-                None,
-                "message",
-                "reasoning",
-                "function_call",
-            ):
+            if isinstance(item, dict) and item.get("type") not in supported | {None}:
                 yield failure_event(
                     "The upstream response requested an unsupported action.",
                     "siwc_unsupported_output",
@@ -567,10 +583,7 @@ async def checked_events(result: httpx.Response):
                     response.get("output"), list
                 ):
                     raise ValueError("invalid completed response")
-                if any(
-                    item.get("type") not in ("message", "reasoning", "function_call")
-                    for item in response["output"]
-                ):
+                if any(item.get("type") not in supported for item in response["output"]):
                     yield failure_event(
                         "The upstream response contained unsupported output.",
                         "siwc_unsupported_output",
@@ -712,6 +725,7 @@ class ResponsesAPI:
                 400, "The request must be a JSON object and stream must be a boolean."
             )
         payload = responses_payload(body)
+        allow_web_search = any(tool["type"] == "web_search" for tool in payload.get("tools", []))
         model_info = await self._model(payload["model"])
         reasoning = reasoning_payload(payload.get("reasoning"), model_info)
         if reasoning is not None:
@@ -760,14 +774,14 @@ class ResponsesAPI:
         if body.get("stream", False):
 
             async def relay():
-                async for event in checked_events(result):
+                async for event in checked_events(result, allow_web_search=allow_web_search):
                     yield event_frame(event)
 
             return ClosingStreamingResponse(
                 relay(), close, media_type="text/event-stream", headers=headers
             )
         try:
-            async for event in checked_events(result):
+            async for event in checked_events(result, allow_web_search=allow_web_search):
                 if event["type"] == "response.completed":
                     return JSONResponse(event["response"], headers=headers)
                 if event["type"] == "response.failed":

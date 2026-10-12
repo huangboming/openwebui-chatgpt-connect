@@ -80,7 +80,7 @@ Everyone with access to these models uses the connected ChatGPT account and its 
 
 Your existing model permissions, parameters, custom names, and avatars are preserved.
 
-### 5. Enable document uploads and tools (optional)
+### 5. Enable document uploads, tools, and web access (optional)
 
 1. In **Functions**, choose **Import From Link** and paste:
 
@@ -90,7 +90,7 @@ Your existing model permissions, parameters, custom names, and avatars are prese
 
 2. Save, enable it, and turn on **Global**. It applies only to models from this connector.
 3. Open `/api/models?refresh=true` on your Open WebUI instance, then reload the page.
-4. For tools, use **Native** function calling with streaming enabled, and enable the Tools you want in your chat.
+4. For tools and web access, use **Native** function calling with streaming enabled. Enable any ordinary Tools you want in your chat.
 
 ## Everyday use
 
@@ -118,6 +118,14 @@ Set **Reasoning Effort** in **Advanced Parameters** for models that offer this o
 
 Enable [Open WebUI Tools](https://docs.openwebui.com/features/extensibility/plugin/tools/) in your chat to let the model use them. Tool calls and results appear in the conversation, with permissions and confirmations managed by Open WebUI.
 
+### Web access
+
+Enable **Web Search** in Open WebUI's admin settings, allow it for the user and model, then turn on the chat's Web Search switch for a `ChatGPT/` model. The companion Filter must be enabled. No separate Web Access Tool, search-engine API key, or additional sign-in is needed for these models.
+
+Ask for current information or provide a public URL to read. The model searches and opens pages through OpenAI within the main conversation, with sources displayed by Open WebUI. Other providers keep their existing search behavior. Ordinary Tools and document uploads can still be used alongside native web access.
+
+Web access is available to the model while the switch is on, not forced on every turn. It uses the chat model and its reasoning settings; it can still be slow if the model performs several searches or extended reasoning. Availability and page access depend on the model and ChatGPT account or workspace policy; page reading is model-assisted, not a raw download or guaranteed full-page extraction.
+
 ### Account settings
 
 Open `/siwc/admin` to manage your account and model selection.
@@ -128,7 +136,7 @@ Open `/siwc/admin` to manage your account and model selection.
 
 ## Update
 
-Download the files from the [latest release](https://github.com/huangboming/openwebui-chatgpt-connect/releases/latest). Replace the code in the existing connector Function with `openwebui_chatgpt_connect.py` and save. If you use document uploads or tools, update the Filter with `chatgpt_responses_history.py` from the same release.
+Download the files from the [latest release](https://github.com/huangboming/openwebui-chatgpt-connect/releases/latest). Replace the code in the existing connector Function with `openwebui_chatgpt_connect.py` and save. If you use document uploads, tools, or web access, update the Filter with `chatgpt_responses_history.py` from the same release.
 
 Changes take effect when you save, and your ChatGPT session is preserved. Open `/api/models?refresh=true` on your Open WebUI instance, then reload the page. If you were signing in during the update, start sign-in again.
 
@@ -138,6 +146,7 @@ Changes take effect when you save, and your ChatGPT session is preserved. Open `
 - **Models do not appear:** check that the Responses connection is enabled, save your model selection on `/siwc/admin`, and reload Open WebUI.
 - **Documents are not read:** check that the companion Filter is enabled with **Global** on, refresh models, and check the upload size. Try PDF if the model rejects another format.
 - **Tools stop after the first call:** check that the companion Filter is enabled with **Global** on. Refresh models at `/api/models?refresh=true` and start a new chat using **Native** function calling and streaming.
+- **Web access is unavailable:** enable Web Search in Open WebUI's admin settings, check the user's feature permission and model web-search controls, and update both Functions. Use the chat Web Search switch, not a separate Web Access Tool.
 - **Usage limit reached:** open [ChatGPT usage settings](https://chatgpt.com/settings/usage) to review your plan or this app's limit.
 - **Callback logging warning during sign-in:** add `siwc/oauth/callback` to Open WebUI's `AUDIT_EXCLUDED_PATHS` and restart Open WebUI before signing in.
 

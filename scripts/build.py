@@ -91,7 +91,7 @@ def artifacts() -> dict[str, str]:
         "chatgpt_responses_history.py": render(
             ("file_inputs", "history_filter"),
             "ChatGPT Responses History",
-            "Preserve ChatGPT reasoning and send original uploaded documents through Responses.",
+            "Preserve ChatGPT history, send original documents, and enable native web access.",
             [],
         ),
     }

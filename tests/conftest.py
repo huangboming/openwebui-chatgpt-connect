@@ -60,6 +60,7 @@ def host(tmp_path, monkeypatch):
         "open_webui": {},
         "open_webui.env": vars(host.env),
         "open_webui.models": {},
+        "open_webui.models.config": {"Config": host},
         "open_webui.models.files": {},
         "open_webui.models.functions": {"Functions": host},
         "open_webui.models.models": {"ModelForm": WorkspaceModelForm, "Models": host},
@@ -67,7 +68,7 @@ def host(tmp_path, monkeypatch):
         "open_webui.storage": {},
         "open_webui.storage.provider": {},
         "open_webui.utils": {},
-        "open_webui.utils.access_control": {},
+        "open_webui.utils.access_control": {"has_permission": host.has_permission},
         "open_webui.utils.access_control.files": {},
         "open_webui.utils.auth": {"get_admin_user": host.get_admin_user},
     }

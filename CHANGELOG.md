@@ -4,6 +4,10 @@ Notable changes are recorded here using [Keep a Changelog](https://keepachangelo
 
 ## [Unreleased]
 
+### Added
+
+- Native OpenAI web search in the main ChatGPT conversation, enabled with Open WebUI's Web Search switch and existing permissions. Search, page opening, answers, and citations share one Responses request instead of separate search and reading Tool requests.
+
 ## [0.4.0] - 2026-10-12
 
 Initial public release.

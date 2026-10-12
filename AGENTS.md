@@ -6,7 +6,7 @@ Connect Open WebUI to ChatGPT plan usage through the official [SIWC API](https:/
 
 - Open WebUI owns chat history, model access controls, and tool permissions/execution.
 - The Event Function owns SIWC authentication, the admin page, and Responses adaptation.
-- The companion Filter preserves opaque reasoning and supplies original uploaded documents through native hooks. Keep it stateless and scoped to this connector; no second history store or global monkey-patches.
+- The companion Filter preserves opaque reasoning and hosted web actions, supplies original uploaded documents, and routes the chat web-search switch through native hooks. Keep it stateless and scoped to this connector; no second history store or global monkey-patches.
 - Use the native Responses connection and existing Open WebUI HTTP port, not a separate gateway/listener, ChatGPT web endpoints, or reused Codex credentials.
 - One installation connects one ChatGPT account/workspace; deployment uses one worker.
 
@@ -34,6 +34,7 @@ Python sources live in `src/openwebui_chatgpt_connect/`:
 - Sign out attempts revocation and clears local tokens, but retains the issued client/account mapping and stable host ID. Removing the remote app is a separate ChatGPT settings action.
 - SIWC requests use `store=false`, `stream=true`, and complete input history. Preserve text/image order, tool call/result pairing, and reasoning order relative to tool calls. Open WebUI executes function tools; the adapter supplies the required SIWC namespace.
 - Uploaded documents are current-request attachment context, not per-turn replay. Resolve file IDs through host permissions and storage; never trust request paths. Preserve original bytes, enforce the shared size limit, consume only converted upload references before RAG, and leave knowledge sources unchanged.
+- Native web access is opt-in through the chat Web Search switch. Preserve global/user/model web-search controls; consume only the connector's host search flag before RAG and builtin search injection. OpenAI executes hosted search and page opening in the main request; Open WebUI still owns ordinary function tools. Carry hosted actions alongside encrypted reasoning in native history without synthetic reasoning or a second store.
 - A stream succeeds only at `response.completed`. Close upstream resources on cancellation, disconnect, or failure; do not retry a stream after consumption has begun.
 - Thinking displays public summaries only. Preserve accumulated summaries when final snapshots are empty, retain paragraph boundaries, and prefer nonempty upstream snapshots. Never decrypt, display, rewrite, or fabricate encrypted reasoning.
 - Scope the Filter using the catalog's `__model__.openai.source` marker, not display names. Preserve other providers' fields and compatibility with already-saved history details.
@@ -57,6 +58,8 @@ uv run pytest
 ```
 
 Node.js is needed for admin-page interaction tests. Mock only host/network boundaries. Native-history contracts live in `tests/fixtures/responses_history.json`. Live sign-in/inference requires user authorization.
+
+Keep new tests proportional to changed observable contracts; use deployment acceptance for live model capabilities, content quality, and performance.
 
 ## Change style
 

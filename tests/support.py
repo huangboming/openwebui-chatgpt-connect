@@ -74,6 +74,14 @@ class Host:
         }
     )
     workspace_models: dict = field(default_factory=dict)
+    config: dict = field(default_factory=dict)
+
+    async def get(self, key, default=None):
+        return self.config.get(key, default)
+
+    async def has_permission(self, user_id, permission, permissions):
+        category, name = permission.split(".")
+        return user_id in self.users and permissions.get(category, {}).get(name, False)
 
     async def get_function_by_id(self, _id):
         return SimpleNamespace(is_active=self.active)
