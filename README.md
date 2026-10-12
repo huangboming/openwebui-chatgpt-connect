@@ -2,7 +2,9 @@
 
 Use your **ChatGPT subscription** in Open WebUI through OpenAI's official [**Sign in with ChatGPT**](https://developers.openai.com/siwc) flow.
 
-Chat with text and images, use Open WebUI Tools, and adjust reasoning effort. Manage your account and available models from a dedicated settings page.
+Chat with text, images, and original documents, use Open WebUI Tools, and adjust reasoning effort. Manage your account and available models from a dedicated settings page.
+
+[Download the latest release](https://github.com/huangboming/openwebui-chatgpt-connect/releases/latest) · [Changelog](CHANGELOG.md)
 
 ## Requirements
 
@@ -17,9 +19,16 @@ Each installation connects one ChatGPT account. Sign-in uses a temporary SSH tun
 
 ### 1. Install the connector
 
-1. Open [**Functions**](https://docs.openwebui.com/features/extensibility/plugin/functions/#create-manually) in the Open WebUI admin panel.
-2. Create an **Event Function** and paste the contents of [`dist/openwebui_chatgpt_connect.py`](dist/openwebui_chatgpt_connect.py).
+1. Open [**Functions**](https://docs.openwebui.com/features/extensibility/plugin/functions/) in the Open WebUI admin panel.
+2. Choose **Import From Link** and paste:
+
+   ```text
+   https://github.com/huangboming/openwebui-chatgpt-connect/releases/latest/download/openwebui_chatgpt_connect.py
+   ```
+
 3. Save and enable it.
+
+You can also download `openwebui_chatgpt_connect.py` from the [latest release](https://github.com/huangboming/openwebui-chatgpt-connect/releases/latest) and paste its contents into a new Event Function.
 
 Open the Function's **Valves** and set:
 
@@ -73,7 +82,12 @@ Your existing model permissions, parameters, custom names, and avatars are prese
 
 ### 5. Enable document uploads and tools (optional)
 
-1. Create a **Filter Function** and paste the contents of [`dist/chatgpt_responses_history.py`](dist/chatgpt_responses_history.py).
+1. In **Functions**, choose **Import From Link** and paste:
+
+   ```text
+   https://github.com/huangboming/openwebui-chatgpt-connect/releases/latest/download/chatgpt_responses_history.py
+   ```
+
 2. Save, enable it, and turn on **Global**. It applies only to models from this connector.
 3. Open `/api/models?refresh=true` on your Open WebUI instance, then reload the page.
 4. For tools, use **Native** function calling with streaming enabled, and enable the Tools you want in your chat.
@@ -114,7 +128,7 @@ Open `/siwc/admin` to manage your account and model selection.
 
 ## Update
 
-Replace the code in the existing connector Function with the latest [`dist/openwebui_chatgpt_connect.py`](dist/openwebui_chatgpt_connect.py) and save. If you use document uploads or tools, update the Filter with [`dist/chatgpt_responses_history.py`](dist/chatgpt_responses_history.py) as well.
+Download the files from the [latest release](https://github.com/huangboming/openwebui-chatgpt-connect/releases/latest). Replace the code in the existing connector Function with `openwebui_chatgpt_connect.py` and save. If you use document uploads or tools, update the Filter with `chatgpt_responses_history.py` from the same release.
 
 Changes take effect when you save, and your ChatGPT session is preserved. Open `/api/models?refresh=true` on your Open WebUI instance, then reload the page. If you were signing in during the update, start sign-in again.
 
@@ -126,3 +140,7 @@ Changes take effect when you save, and your ChatGPT session is preserved. Open `
 - **Tools stop after the first call:** check that the companion Filter is enabled with **Global** on. Refresh models at `/api/models?refresh=true` and start a new chat using **Native** function calling and streaming.
 - **Usage limit reached:** open [ChatGPT usage settings](https://chatgpt.com/settings/usage) to review your plan or this app's limit.
 - **Callback logging warning during sign-in:** add `siwc/oauth/callback` to Open WebUI's `AUDIT_EXCLUDED_PATHS` and restart Open WebUI before signing in.
+
+## License
+
+Licensed under the [Apache License 2.0](LICENSE).

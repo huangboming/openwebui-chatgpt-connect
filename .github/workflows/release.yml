@@ -1,0 +1,84 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  checks:
+    name: Validate
+    uses: ./.github/workflows/ci.yml
+
+  publish:
+    name: Publish
+    needs: checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Validate tag and prepare release notes
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          python - <<'PY'
+          import os
+          import re
+          import tomllib
+          from pathlib import Path
+
+          project = tomllib.loads(Path("pyproject.toml").read_text())["project"]
+          version = project["version"]
+          tag = os.environ["RELEASE_TAG"]
+          if tag != f"v{version}":
+              raise SystemExit(f"Release tag {tag!r} must equal 'v{version}'")
+
+          heading = f"## [{version}]"
+          lines = Path("CHANGELOG.md").read_text().splitlines()
+          matches = [
+              index for index, line in enumerate(lines)
+              if line == heading or line.startswith(f"{heading} - ")
+          ]
+          if len(matches) != 1:
+              raise SystemExit(f"CHANGELOG.md must contain exactly one {heading!r} section")
+          start = matches[0] + 1
+          end = next(
+              (
+                  index for index in range(start, len(lines))
+                  if lines[index].startswith("## [")
+                  or re.match(r"^\[[^]]+\]:\s", lines[index])
+              ),
+              len(lines),
+          )
+          notes = "\n".join(lines[start:end]).strip()
+          if not notes:
+              raise SystemExit(f"CHANGELOG.md section {heading!r} is empty")
+          (Path(os.environ["RUNNER_TEMP"]) / "release-notes.md").write_text(f"{notes}\n")
+          PY
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            dist/openwebui_chatgpt_connect.py \
+            dist/chatgpt_responses_history.py \
+            LICENSE \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
+            --notes-file "$RUNNER_TEMP/release-notes.md" \
+            --title "$GITHUB_REF_NAME"

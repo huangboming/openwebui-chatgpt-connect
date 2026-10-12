@@ -71,6 +71,7 @@ def artifacts() -> dict[str, str]:
                 f"author: {metadata['authors'][0]['name']}",
                 f"description: {description}",
                 f"version: {metadata['version']}",
+                f"license: {metadata['license']}",
                 f"required_open_webui_version: {function['required-open-webui-version']}",
                 *([f"requirements: {','.join(requirements)}"] if requirements else []),
                 '"""',

@@ -3,6 +3,7 @@ title: ChatGPT Responses History
 author: huangboming
 description: Preserve ChatGPT reasoning and send original uploaded documents through Responses.
 version: 0.4.0
+license: Apache-2.0
 required_open_webui_version: 0.11.4
 """
 

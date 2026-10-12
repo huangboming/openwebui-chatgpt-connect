@@ -45,6 +45,8 @@ Python sources live in `src/openwebui_chatgpt_connect/`:
 - Edit `src/`, never generated `dist/` files. Metadata comes from `pyproject.toml`.
 - Keep the build script fixed-purpose: known module order, embedded assets, two outputs. No CLI options, recursive dependency resolver, or builder framework.
 - Regenerate and include both `dist/openwebui_chatgpt_connect.py` and `dist/chatgpt_responses_history.py` with changes that affect delivery.
+- `.github/workflows/ci.yml` runs the checks below and verifies generated files; the tag-triggered release workflow reuses CI before publishing both Functions and `LICENSE`.
+- Release tags must equal `v<pyproject.toml version>` and have one nonempty matching section in `CHANGELOG.md`. Keep release instructions out of the user README; never push tags or publish without authorization.
 
 ```sh
 uv sync

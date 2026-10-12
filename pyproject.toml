@@ -4,11 +4,18 @@ version = "0.4.0"
 description = "Connect Open WebUI to ChatGPT subscriptions through the official SIWC API."
 authors = [{ name = "huangboming" }]
 readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 requires-python = ">=3.11"
 dependencies = [
     "httpx",
     "PyJWT[crypto]",
 ]
+
+[project.urls]
+Repository = "https://github.com/huangboming/openwebui-chatgpt-connect"
+Changelog = "https://github.com/huangboming/openwebui-chatgpt-connect/blob/main/CHANGELOG.md"
+Issues = "https://github.com/huangboming/openwebui-chatgpt-connect/issues"
 
 [dependency-groups]
 dev = [

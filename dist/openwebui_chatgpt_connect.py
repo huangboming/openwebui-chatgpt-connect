@@ -3,6 +3,7 @@ title: ChatGPT Connect
 author: huangboming
 description: Connect Open WebUI to ChatGPT subscriptions through the official SIWC API.
 version: 0.4.0
+license: Apache-2.0
 required_open_webui_version: 0.11.4
 requirements: httpx,PyJWT[crypto]
 """

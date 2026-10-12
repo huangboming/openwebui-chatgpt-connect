@@ -52,6 +52,7 @@ def test_delivery_metadata_comes_from_project(artifact):
     assert metadata["author"] == project["project"]["authors"][0]["name"]
     assert metadata["version"] == project["project"]["version"]
     assert metadata["requirements"] == ",".join(project["project"]["dependencies"])
+    assert metadata["license"] == project["project"]["license"]
     assert (
         metadata["required_open_webui_version"]
         == project["tool"]["openwebui-chatgpt-connect"]["required-open-webui-version"]
@@ -65,6 +66,7 @@ def test_history_filter_is_an_independent_delivery(filter_artifact, history_filt
     assert metadata["title"] == "ChatGPT Responses History"
     assert metadata["version"] == project["project"]["version"]
     assert metadata["author"] == project["project"]["authors"][0]["name"]
+    assert metadata["license"] == project["project"]["license"]
     assert "requirements" not in metadata
     assert {node.name for node in tree.body if isinstance(node, ast.ClassDef)} == {"Filter"}
     assert hasattr(history_filter, "stream") and hasattr(history_filter, "request")
