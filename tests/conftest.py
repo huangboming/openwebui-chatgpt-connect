@@ -3,13 +3,20 @@
 import importlib.util
 import logging
 import sys
-from types import ModuleType, SimpleNamespace
+from types import SimpleNamespace
 
 import httpx
 import pytest
 
 from scripts.build import artifacts
-from tests.support import REAL_ASYNC_CLIENT, Harness, Host, OpenAI, WorkspaceModelForm
+from tests.support import (
+    REAL_ASYNC_CLIENT,
+    Harness,
+    Host,
+    OpenAI,
+    WorkspaceModelForm,
+    install_modules,
+)
 
 
 @pytest.fixture(scope="session")
@@ -31,7 +38,7 @@ def filter_artifact(built_artifacts):
 
 
 @pytest.fixture
-def history_filter(filter_artifact):
+def history_filter(filter_artifact, host):
     spec = importlib.util.spec_from_file_location("_built_history_filter", filter_artifact)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -39,7 +46,7 @@ def history_filter(filter_artifact):
 
 
 @pytest.fixture
-async def harness(artifact, tmp_path, monkeypatch):
+def host(tmp_path, monkeypatch):
     host = Host(
         SimpleNamespace(
             DATA_DIR=tmp_path,
@@ -53,21 +60,24 @@ async def harness(artifact, tmp_path, monkeypatch):
         "open_webui": {},
         "open_webui.env": vars(host.env),
         "open_webui.models": {},
+        "open_webui.models.files": {},
         "open_webui.models.functions": {"Functions": host},
         "open_webui.models.models": {"ModelForm": WorkspaceModelForm, "Models": host},
         "open_webui.models.users": {"Users": host},
+        "open_webui.storage": {},
+        "open_webui.storage.provider": {},
         "open_webui.utils": {},
+        "open_webui.utils.access_control": {},
+        "open_webui.utils.access_control.files": {},
         "open_webui.utils.auth": {"get_admin_user": host.get_admin_user},
     }
-    for name, values in bindings.items():
-        module = ModuleType(name)
-        module.__dict__.update(values)
-        monkeypatch.setitem(sys.modules, name, module)
-        if "." in name:
-            parent, child = name.rsplit(".", 1)
-            setattr(sys.modules[parent], child, module)
+    install_modules(monkeypatch, bindings)
     host.env = sys.modules["open_webui.env"]
+    return host
 
+
+@pytest.fixture
+async def harness(artifact, host, monkeypatch):
     name = "_built_connect_function"
     spec = importlib.util.spec_from_file_location(name, artifact)
     module = importlib.util.module_from_spec(spec)

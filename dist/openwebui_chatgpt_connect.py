@@ -2,7 +2,7 @@
 title: ChatGPT Connect
 author: huangboming
 description: Connect Open WebUI to ChatGPT subscriptions through the official SIWC API.
-version: 0.3.0
+version: 0.4.0
 required_open_webui_version: 0.11.4
 requirements: httpx,PyJWT[crypto]
 """
@@ -43,6 +43,7 @@ import json
 import jwt
 import logging
 import math
+import mimetypes
 import os
 import re
 import secrets
@@ -50,6 +51,81 @@ import shlex
 import tempfile
 import time
 import uuid
+
+
+# --- src/openwebui_chatgpt_connect/file_inputs.py ---
+
+MAX_FILE_BYTES = 50_000_000
+FILE_LIMIT_ERROR = "File inputs exceed the 50 MB request limit."
+DOCUMENT_MIME_TYPES = {
+    "application/pdf",
+    "application/msword",
+    "application/rtf",
+    "application/json",
+    "application/javascript",
+    "application/typescript",
+    "application/xml",
+    "application/yaml",
+    "application/x-yaml",
+    "application/toml",
+    "application/x-toml",
+}
+DOCUMENT_MIME_PREFIXES = (
+    "text/",
+    "application/vnd.openxmlformats-officedocument.",
+    "application/vnd.oasis.opendocument.",
+    "application/vnd.ms-excel",
+    "application/vnd.ms-powerpoint",
+    "application/vnd.ms-word",
+)
+
+
+def file_mime(filename: str, media_type: str | None = None) -> str:
+    if not isinstance(filename, str) or not filename.strip():
+        raise ValueError("File inputs must include a filename.")
+    if media_type is not None and not isinstance(media_type, str):
+        raise ValueError("File content type must be a string.")
+    mime = (media_type or "").split(";", 1)[0].strip().lower()
+    if mime in ("", "application/octet-stream"):
+        mime = mimetypes.guess_type(filename)[0] or ""
+    return mime
+
+
+def document_mime(mime: str) -> str:
+    if mime not in DOCUMENT_MIME_TYPES and not mime.startswith(DOCUMENT_MIME_PREFIXES):
+        raise ValueError("Unsupported file format; use a document or spreadsheet.")
+    return mime
+
+
+def file_input_size(part: dict) -> int:
+    data = part["file_data"]
+    encoded_size = len(data) - data.index(",") - 1
+    return encoded_size // 4 * 3 - data[-2:].count("=")
+
+
+def file_input(part: dict) -> dict:
+    if part.get("file_id") is not None or part.get("file_url") is not None:
+        raise ValueError("SIWC file inputs require inline data, not file IDs or URLs.")
+    data = part.get("file_data")
+    if not isinstance(data, str) or not data.startswith("data:"):
+        raise ValueError("file_data must be a base64 document data URL.")
+    header, separator, encoded = data.partition(",")
+    mime, encoding_separator, encoding = header.removeprefix("data:").partition(";")
+    if not separator or not encoding_separator or encoding != "base64":
+        raise ValueError("file_data must be a base64 document data URL.")
+    filename = part.get("filename")
+    document_mime(file_mime(filename, mime))
+    if file_input_size(part) > MAX_FILE_BYTES:
+        raise ValueError(FILE_LIMIT_ERROR)
+    if len(encoded) % 4 or encoded.endswith("==="):
+        raise ValueError("File data must contain valid, non-empty base64.")
+    try:
+        decoded = base64.b64decode(encoded, validate=True)
+    except ValueError:
+        raise ValueError("File data must contain valid, non-empty base64.") from None
+    if not decoded:
+        raise ValueError("File data must contain valid, non-empty base64.")
+    return {"type": "input_file", "filename": filename, "file_data": data}
 
 
 # --- src/openwebui_chatgpt_connect/settings.py ---
@@ -636,8 +712,13 @@ def content_parts(content, text_type: str) -> list[dict]:
             parts.append({"type": text_type, "text": part["text"]})
         elif part.get("type") == "input_image":
             parts.append(image_part(part))
+        elif part.get("type") == "input_file":
+            try:
+                parts.append(file_input(part))
+            except ValueError as exc:
+                raise HTTPException(400, str(exc)) from None
         else:
-            raise HTTPException(400, "Message content must contain text or images.")
+            raise HTTPException(400, "Message content must contain text, images, or documents.")
     return parts
 
 
@@ -793,6 +874,16 @@ def responses_payload(body: dict) -> dict:
         text_type = "output_text" if role == "assistant" else "input_text"
         parts = content_parts(item.get("content", ""), text_type)
         items.append({"type": "message", "role": role, "content": parts})
+
+    file_bytes = 0
+    for item in items:
+        parts = item.get("content") or item.get("output") or []
+        if isinstance(parts, list):
+            file_bytes += sum(
+                file_input_size(part) for part in parts if part.get("type") == "input_file"
+            )
+    if file_bytes > MAX_FILE_BYTES:
+        raise HTTPException(400, FILE_LIMIT_ERROR)
 
     if calls != results:
         raise HTTPException(

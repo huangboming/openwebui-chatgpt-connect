@@ -6,7 +6,7 @@ Connect Open WebUI to ChatGPT plan usage through the official [SIWC API](https:/
 
 - Open WebUI owns chat history, model access controls, and tool permissions/execution.
 - The Event Function owns SIWC authentication, the admin page, and Responses adaptation.
-- The companion Filter preserves opaque reasoning through native request/stream hooks. Keep it stateless and scoped to this connector; no second history store or global monkey-patches.
+- The companion Filter preserves opaque reasoning and supplies original uploaded documents through native hooks. Keep it stateless and scoped to this connector; no second history store or global monkey-patches.
 - Use the native Responses connection and existing Open WebUI HTTP port, not a separate gateway/listener, ChatGPT web endpoints, or reused Codex credentials.
 - One installation connects one ChatGPT account/workspace; deployment uses one worker.
 
@@ -20,8 +20,9 @@ Python sources live in `src/openwebui_chatgpt_connect/`:
 | `settings.py` | Protocol constants and administrator Valves |
 | `auth.py` | Identity validation, credential persistence, token refresh/revocation |
 | `admin.py` | Admin operations, OAuth transactions/callbacks, model metadata updates |
-| `responses.py` | Catalog, request adaptation, tools/images, checked streaming |
-| `history_filter.py` | Stateless reasoning history compatibility Filter |
+| `responses.py` | Catalog, request adaptation, tools/images/files, checked streaming |
+| `history_filter.py` | Stateless reasoning history and original-upload compatibility Filter |
+| `file_inputs.py` | Shared inline-document validation and request size limit |
 | `assets/` | Standalone `admin.html` page/preview and bundled `chatgpt.png` avatar |
 
 `scripts/build.py` generates both deliveries; `tests/` tests the complete deliveries. `README.md` is the end-user guide; keep developer commands, tests, and internal details out.
@@ -32,6 +33,7 @@ Python sources live in `src/openwebui_chatgpt_connect/`:
 - Keep file locks, restrictive permissions, atomic saves, and coordinated session changes. Credentials live under Open WebUI's `DATA_DIR/siwc-connect`.
 - Sign out attempts revocation and clears local tokens, but retains the issued client/account mapping and stable host ID. Removing the remote app is a separate ChatGPT settings action.
 - SIWC requests use `store=false`, `stream=true`, and complete input history. Preserve text/image order, tool call/result pairing, and reasoning order relative to tool calls. Open WebUI executes function tools; the adapter supplies the required SIWC namespace.
+- Uploaded documents are current-request attachment context, not per-turn replay. Resolve file IDs through host permissions and storage; never trust request paths. Preserve original bytes, enforce the shared size limit, consume only converted upload references before RAG, and leave knowledge sources unchanged.
 - A stream succeeds only at `response.completed`. Close upstream resources on cancellation, disconnect, or failure; do not retry a stream after consumption has begun.
 - Thinking displays public summaries only. Preserve accumulated summaries when final snapshots are empty, retain paragraph boundaries, and prefer nonempty upstream snapshots. Never decrypt, display, rewrite, or fabricate encrypted reasoning.
 - Scope the Filter using the catalog's `__model__.openai.source` marker, not display names. Preserve other providers' fields and compatibility with already-saved history details.

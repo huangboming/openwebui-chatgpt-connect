@@ -71,12 +71,12 @@ Everyone with access to these models uses the connected ChatGPT account and its 
 
 Your existing model permissions, parameters, custom names, and avatars are preserved.
 
-### 5. Enable tools (optional)
+### 5. Enable document uploads and tools (optional)
 
 1. Create a **Filter Function** and paste the contents of [`dist/chatgpt_responses_history.py`](dist/chatgpt_responses_history.py).
 2. Save, enable it, and turn on **Global**. It applies only to models from this connector.
 3. Open `/api/models?refresh=true` on your Open WebUI instance, then reload the page.
-4. Use **Native** function calling with streaming enabled, and enable the Tools you want in your chat.
+4. For tools, use **Native** function calling with streaming enabled, and enable the Tools you want in your chat.
 
 ## Everyday use
 
@@ -90,7 +90,9 @@ Upload one or more images in the chat composer to read screenshots, compare phot
 
 Choose a model with [vision support](https://developers.openai.com/api/docs/guides/images-vision#analyze-images). Supported formats are PNG, JPEG, WEBP, and non-animated GIF.
 
-Images go directly to the selected model. For documents, use Open WebUI's document processing and knowledge features to provide extracted or retrieved text to the model.
+With the companion Filter enabled, upload documents and spreadsheets such as PDF, Word, PowerPoint, text, CSV, or Excel files. Original files go directly to the selected model and are included again when you follow up. Supported formats depend on the model; use PDF when page layout or embedded images matter.
+
+The combined document size is limited to 50 MB per request. Open WebUI's upload limits also apply. Knowledge bases continue to use Open WebUI's retrieval features.
 
 ### Thinking and reasoning effort
 
@@ -112,7 +114,7 @@ Open `/siwc/admin` to manage your account and model selection.
 
 ## Update
 
-Replace the code in the existing connector Function with the latest [`dist/openwebui_chatgpt_connect.py`](dist/openwebui_chatgpt_connect.py) and save. If you use tools, update the Filter with [`dist/chatgpt_responses_history.py`](dist/chatgpt_responses_history.py) as well.
+Replace the code in the existing connector Function with the latest [`dist/openwebui_chatgpt_connect.py`](dist/openwebui_chatgpt_connect.py) and save. If you use document uploads or tools, update the Filter with [`dist/chatgpt_responses_history.py`](dist/chatgpt_responses_history.py) as well.
 
 Changes take effect when you save, and your ChatGPT session is preserved. Open `/api/models?refresh=true` on your Open WebUI instance, then reload the page. If you were signing in during the update, start sign-in again.
 
@@ -120,6 +122,7 @@ Changes take effect when you save, and your ChatGPT session is preserved. Open `
 
 - **Sign-in does not finish:** check that the SSH command is running and `CALLBACK_PORT` is free. Cancel sign-in on the settings page and try again.
 - **Models do not appear:** check that the Responses connection is enabled, save your model selection on `/siwc/admin`, and reload Open WebUI.
+- **Documents are not read:** check that the companion Filter is enabled with **Global** on, refresh models, and check the upload size. Try PDF if the model rejects another format.
 - **Tools stop after the first call:** check that the companion Filter is enabled with **Global** on. Refresh models at `/api/models?refresh=true` and start a new chat using **Native** function calling and streaming.
 - **Usage limit reached:** open [ChatGPT usage settings](https://chatgpt.com/settings/usage) to review your plan or this app's limit.
 - **Callback logging warning during sign-in:** add `siwc/oauth/callback` to Open WebUI's `AUDIT_EXCLUDED_PATHS` and restart Open WebUI before signing in.

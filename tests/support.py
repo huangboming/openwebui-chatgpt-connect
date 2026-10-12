@@ -2,9 +2,10 @@
 
 import json
 import re
+import sys
 import time
 from dataclasses import dataclass, field
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 from urllib.parse import parse_qs, urlsplit
 
 import httpx
@@ -17,6 +18,19 @@ REAL_ASYNC_CLIENT = httpx.AsyncClient
 KEY = "internal-key-" + "k" * 32
 WEBUI_URL = "https://webui.example.test:8080"
 SCOPES = "openid profile email offline_access resource.invoke chatgpt.tokens.use.direct"
+
+
+def install_modules(monkeypatch, bindings):
+    for name, values in bindings.items():
+        module = sys.modules.get(name)
+        if module is None:
+            module = ModuleType(name)
+            monkeypatch.setitem(sys.modules, name, module)
+        for key, value in values.items():
+            monkeypatch.setattr(module, key, value, raising=False)
+        if "." in name:
+            parent, child = name.rsplit(".", 1)
+            monkeypatch.setattr(sys.modules[parent], child, module, raising=False)
 
 
 def events(response):

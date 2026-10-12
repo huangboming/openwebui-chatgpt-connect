@@ -222,6 +222,106 @@
           ]
         }
       ]
+    },
+    {
+      "name": "original-document-with-tool-history",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Read the attached file."
+        },
+        {
+          "role": "assistant",
+          "content": "",
+          "tool_calls": [
+            {
+              "id": "call-marker",
+              "type": "function",
+              "function": {
+                "name": "get_marker",
+                "arguments": "{}"
+              }
+            }
+          ],
+          "reasoning_details": [
+            {
+              "type": "reasoning.encrypted",
+              "format": "openai-responses-v1",
+              "source": "chatgpt-connect",
+              "model": "catalog-model",
+              "id": "reasoning-tool",
+              "data": "opaque-tool-context",
+              "summary": [],
+              "before_call_id": "call-marker"
+            }
+          ]
+        },
+        {
+          "role": "tool",
+          "tool_call_id": "call-marker",
+          "content": "Tool execution was rejected by the user."
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "file",
+              "file": {
+                "filename": "original.docx",
+                "file_data": "data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;base64,c3ludGhldGljIG9yaWdpbmFs"
+              }
+            },
+            {
+              "type": "text",
+              "text": "Continue."
+            }
+          ]
+        }
+      ],
+      "input": [
+        {
+          "type": "message",
+          "role": "user",
+          "content": [
+            {
+              "type": "input_text",
+              "text": "Read the attached file."
+            }
+          ]
+        },
+        {
+          "type": "reasoning",
+          "summary": [],
+          "encrypted_content": "opaque-tool-context",
+          "id": "reasoning-tool"
+        },
+        {
+          "type": "function_call",
+          "call_id": "call-marker",
+          "name": "get_marker",
+          "arguments": "{}"
+        },
+        {
+          "type": "function_call_output",
+          "call_id": "call-marker",
+          "output": "Tool execution was rejected by the user."
+        },
+        {
+          "type": "message",
+          "role": "user",
+          "content": [
+            {
+              "type": "input_file",
+              "filename": "original.docx",
+              "file_data": "data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;base64,c3ludGhldGljIG9yaWdpbmFs"
+            },
+            {
+              "type": "input_text",
+              "text": "Continue."
+            }
+          ]
+        }
+      ]
     }
   ]
 }

@@ -12,6 +12,7 @@ from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from .auth import ChatGPTAuth
+from .file_inputs import FILE_LIMIT_ERROR, MAX_FILE_BYTES, file_input, file_input_size
 from .settings import ERROR_STATUS, NO_STORE, RESOURCE
 
 STATEFUL_FIELDS = (
@@ -193,8 +194,13 @@ def content_parts(content, text_type: str) -> list[dict]:
             parts.append({"type": text_type, "text": part["text"]})
         elif part.get("type") == "input_image":
             parts.append(image_part(part))
+        elif part.get("type") == "input_file":
+            try:
+                parts.append(file_input(part))
+            except ValueError as exc:
+                raise HTTPException(400, str(exc)) from None
         else:
-            raise HTTPException(400, "Message content must contain text or images.")
+            raise HTTPException(400, "Message content must contain text, images, or documents.")
     return parts
 
 
@@ -350,6 +356,16 @@ def responses_payload(body: dict) -> dict:
         text_type = "output_text" if role == "assistant" else "input_text"
         parts = content_parts(item.get("content", ""), text_type)
         items.append({"type": "message", "role": role, "content": parts})
+
+    file_bytes = 0
+    for item in items:
+        parts = item.get("content") or item.get("output") or []
+        if isinstance(parts, list):
+            file_bytes += sum(
+                file_input_size(part) for part in parts if part.get("type") == "input_file"
+            )
+    if file_bytes > MAX_FILE_BYTES:
+        raise HTTPException(400, FILE_LIMIT_ERROR)
 
     if calls != results:
         raise HTTPException(

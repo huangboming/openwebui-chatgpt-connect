@@ -82,15 +82,15 @@ def artifacts() -> dict[str, str]:
 
     generated = {
         "openwebui_chatgpt_connect.py": render(
-            ("settings", "auth", "responses", "admin", "function"),
+            ("file_inputs", "settings", "auth", "responses", "admin", "function"),
             function["title"],
             metadata["description"],
             metadata["dependencies"],
         ),
         "chatgpt_responses_history.py": render(
-            ("history_filter",),
+            ("file_inputs", "history_filter"),
             "ChatGPT Responses History",
-            "Preserve ChatGPT reasoning in native Responses history and tool continuations.",
+            "Preserve ChatGPT reasoning and send original uploaded documents through Responses.",
             [],
         ),
     }
