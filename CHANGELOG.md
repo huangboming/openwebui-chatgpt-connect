@@ -4,6 +4,8 @@ Notable changes are recorded here using [Keep a Changelog](https://keepachangelo
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-13
+
 ### Added
 
 - Native OpenAI web search in the main ChatGPT conversation, enabled with Open WebUI's Web Search switch and existing permissions. Search, page opening, answers, and citations share one Responses request instead of separate search and reading Tool requests.
@@ -22,5 +24,6 @@ Initial public release.
 - A companion Filter that keeps tool and document conversations working across follow-ups and Open WebUI restarts.
 - Two standalone Function files for installation through Open WebUI.
 
-[Unreleased]: https://github.com/huangboming/openwebui-chatgpt-connect/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/huangboming/openwebui-chatgpt-connect/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/huangboming/openwebui-chatgpt-connect/releases/tag/v0.5.0
 [0.4.0]: https://github.com/huangboming/openwebui-chatgpt-connect/releases/tag/v0.4.0
