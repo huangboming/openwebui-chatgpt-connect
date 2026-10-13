@@ -122,7 +122,7 @@ Enable [Open WebUI Tools](https://docs.openwebui.com/features/extensibility/plug
 
 Enable **Web Search** in Open WebUI's admin settings, allow it for the user and model, then turn on the chat's Web Search switch for a `ChatGPT/` model. The companion Filter must be enabled. No separate Web Access Tool, search-engine API key, or additional sign-in is needed for these models.
 
-Ask for current information or provide a public URL to read. The model searches and opens pages through OpenAI within the main conversation, with sources displayed by Open WebUI. Other providers keep their existing search behavior. Ordinary Tools and document uploads can still be used alongside native web access.
+Ask for current information or provide a public URL to read. The model searches and opens pages through OpenAI within the main conversation, with progress and sources displayed by Open WebUI. Answer citations link to supporting pages; retrieved links are separately labeled **Search result** and may not have been opened or cited. Other providers keep their existing search behavior. Ordinary Tools and document uploads can still be used alongside native web access.
 
 Web access is available to the model while the switch is on, not forced on every turn. It uses the chat model and its reasoning settings; it can still be slow if the model performs several searches or extended reasoning. Availability and page access depend on the model and ChatGPT account or workspace policy; page reading is model-assisted, not a raw download or guaranteed full-page extraction.
 

@@ -394,6 +394,9 @@ def responses_payload(body: dict) -> dict:
     include = body.get("include") or []
     if not isinstance(include, list) or not all(isinstance(value, str) for value in include):
         raise HTTPException(400, "include must be an array of strings.")
+    include = [*include, "reasoning.encrypted_content"]
+    if any(tool.get("type") == "web_search" for tool in tools.get("tools", [])):
+        include.append("web_search_call.action.sources")
     forwarded = ("instructions", "text", "service_tier", "prompt_cache_key")
     payload = {key: body[key] for key in forwarded if body.get(key) is not None}
     reasoning = reasoning_parameters(body)
@@ -404,7 +407,7 @@ def responses_payload(body: dict) -> dict:
         input=items,
         store=False,
         stream=True,
-        include=list(dict.fromkeys([*include, "reasoning.encrypted_content"])),
+        include=list(dict.fromkeys(include)),
     )
     payload.update(tools)
     return payload

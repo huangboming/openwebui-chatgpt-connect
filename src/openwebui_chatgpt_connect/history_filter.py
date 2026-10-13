@@ -3,6 +3,7 @@
 import asyncio
 import base64
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from open_webui.models import files as file_models
 from open_webui.models.config import Config
@@ -123,6 +124,108 @@ async def native_web_search(body: dict, model: dict, user) -> dict:
     }
 
 
+def web_results(output: list[dict]) -> list[dict]:
+    results = {}
+    for item in output:
+        if item.get("type") != "web_search_call":
+            continue
+        for reference in (item.get("action") or {}).get("sources") or []:
+            url = reference.get("url")
+            if not isinstance(url, str) or url in results:
+                continue
+            try:
+                parsed = urlsplit(url)
+                if parsed.scheme not in ("http", "https") or not parsed.netloc or parsed.username:
+                    continue
+            except ValueError:
+                continue
+            results[url] = {"url": url, "title": reference.get("title") or url}
+    return list(results.values())
+
+
+async def emit_web_events(event: dict, emit, body: dict):
+    kind = event.get("type")
+    updates = []
+    source_output = []
+    description = None
+    done = False
+    error = False
+    if kind == "response.web_search_call.in_progress":
+        description = "Accessing the web"
+    elif kind == "response.web_search_call.searching":
+        description = "Searching the web"
+    elif (
+        kind == "response.output_item.done"
+        and event.get("item", {}).get("type") == "web_search_call"
+        and event["item"].get("status") in {"completed", "failed"}
+    ):
+        item = event["item"]
+        error = item.get("status") == "failed"
+        if not error:
+            source_output = [item]
+        done = True
+        description = (
+            "Web action failed"
+            if error
+            else {
+                "search": "Search completed",
+                "open_page": "Page-opening step completed",
+                "find_in_page": "Page lookup completed",
+            }.get((item.get("action") or {}).get("type"), "Web action completed")
+        )
+    elif kind in {"response.completed", "response.failed", "response.incomplete"}:
+        response = event.get("response") or {}
+        output = response.get("output") or []
+        if any(item.get("type") == "web_search_call" for item in output) or any(
+            tool.get("type") == "web_search" for tool in (body.get("tools") or [])
+        ):
+            done = True
+            error = kind != "response.completed"
+            description = (
+                "Web-enabled response failed" if error else "Web-enabled response completed"
+            )
+        if kind == "response.completed":
+            source_output = output
+    for result in web_results(source_output):
+        url, title = result["url"], result["title"]
+        # Stable non-URL IDs let the host deduplicate stream/final entries
+        # without replacing the retrieval label with its citation URL label.
+        source_id = f"{SOURCE}:search-result:{url}"
+        label = f"Search result: {title}"
+        updates.append(
+            {
+                "type": "source",
+                "data": {
+                    "source": {"id": source_id, "name": label, "url": url},
+                    "document": ["Returned by web search; not necessarily opened or cited."],
+                    "metadata": [
+                        {
+                            "source": source_id,
+                            "name": label,
+                            "url": url,
+                            "type": "web_search_result",
+                        }
+                    ],
+                },
+            }
+        )
+    if description:
+        updates.insert(
+            0,
+            {
+                "type": "status",
+                "data": {
+                    "action": "web_search",
+                    "description": description,
+                    "done": done,
+                    **({"error": True} if error else {}),
+                },
+            },
+        )
+    for update in updates:
+        await emit(update)
+
+
 class Filter:
     async def inlet(self, body: dict, __model__: dict, __user__: dict | None = None) -> dict:
         if not chatgpt_model(__model__):
@@ -210,10 +313,18 @@ class Filter:
         # host's normal retrieval path. The saved chat still owns the originals.
         return {**body, "messages": messages, "files": remaining}
 
-    def stream(self, event: dict, __model__: dict) -> dict:
+    async def stream(
+        self, event: dict, __model__: dict, __event_emitter__=None, __body__: dict | None = None
+    ) -> dict:
         model_id = chatgpt_model(__model__)
         if not model_id:
             return event
+        if __event_emitter__ is not None:
+            try:
+                await emit_web_events(event, __event_emitter__, __body__ or {})
+            except Exception:
+                # UI updates must not interrupt the response or opaque history.
+                pass
         kind = event.get("type")
         if kind in {"response.output_item.added", "response.output_item.done"}:
             return {**event, "item": reasoning_item(event["item"], model_id)}

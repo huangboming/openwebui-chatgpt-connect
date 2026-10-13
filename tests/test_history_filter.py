@@ -30,22 +30,24 @@ CALL = {
 }
 
 
-def saved_details(history_filter, reasoning=REASONING):
+async def saved_details(history_filter, reasoning=REASONING):
     event = {
         "type": "response.completed",
         "response": {"status": "completed", "output": [reasoning, CALL]},
     }
-    result = history_filter.stream(event, __model__=MODEL)
+    result = await history_filter.stream(event, __model__=MODEL)
     return result["response"]["output"][0]["reasoning_details"]
 
 
 @pytest.mark.parametrize("event_type", ["response.output_item.added", "response.output_item.done"])
 @pytest.mark.parametrize("summary", [[], [{"type": "summary_text", "text": "Public summary."}]])
-def test_reasoning_is_encoded_before_native_stream_storage(history_filter, event_type, summary):
+async def test_reasoning_is_encoded_before_native_stream_storage(
+    history_filter, event_type, summary
+):
     reasoning = {**REASONING, "summary": summary}
     event = {"type": event_type, "output_index": 0, "item": reasoning}
     original = copy.deepcopy(event)
-    encoded = history_filter.stream(event, __model__=MODEL)
+    encoded = await history_filter.stream(event, __model__=MODEL)
     assert event == original
     assert encoded["item"]["encrypted_content"] == reasoning["encrypted_content"]
     assert encoded["item"]["summary"] == summary
@@ -53,10 +55,10 @@ def test_reasoning_is_encoded_before_native_stream_storage(history_filter, event
     assert detail["data"] == reasoning["encrypted_content"]
     assert detail["summary"] == summary
     assert detail["model"] == "catalog-model"
-    assert history_filter.stream(encoded, __model__=MODEL) == encoded
+    assert await history_filter.stream(encoded, __model__=MODEL) == encoded
 
 
-def test_completion_snapshot_keeps_every_reasoning_item(history_filter):
+async def test_completion_snapshot_keeps_every_reasoning_item(history_filter):
     event = {
         "type": "response.completed",
         "response": {
@@ -65,27 +67,27 @@ def test_completion_snapshot_keeps_every_reasoning_item(history_filter):
         },
     }
     original = copy.deepcopy(event)
-    encoded = history_filter.stream(event, __model__=MODEL)
+    encoded = await history_filter.stream(event, __model__=MODEL)
     assert event == original
     output = encoded["response"]["output"]
     assert output[1] == CALL
     assert [output[i]["reasoning_details"][0]["id"] for i in (0, 2)] == ["reasoning-test", "second"]
-    assert history_filter.stream(encoded, __model__=MODEL) == encoded
+    assert await history_filter.stream(encoded, __model__=MODEL) == encoded
 
 
 @pytest.mark.parametrize("model", [{}, {"id": "other"}, {"openai": {"id": "catalog-model"}}])
-def test_filter_is_scoped_by_connector_catalog_not_display_name(history_filter, model):
+async def test_filter_is_scoped_by_connector_catalog_not_display_name(history_filter, model):
     event = {"type": "response.output_item.done", "item": REASONING}
     body = {"messages": [{"role": "assistant", "reasoning_details": [{"data": "other"}]}]}
-    assert history_filter.stream(event, __model__=model) is event
+    assert await history_filter.stream(event, __model__=model) is event
     assert history_filter.request(body, __model__=model) is body
 
 
 @pytest.mark.parametrize("encrypted", [None, ""])
-def test_public_summary_without_encrypted_context_is_not_replayed(history_filter, encrypted):
+async def test_public_summary_without_encrypted_context_is_not_replayed(history_filter, encrypted):
     item = {**REASONING, "encrypted_content": encrypted}
     event = {"type": "response.output_item.done", "item": item}
-    assert history_filter.stream(event, __model__=MODEL)["item"] == item
+    assert (await history_filter.stream(event, __model__=MODEL))["item"] == item
 
 
 @pytest.mark.parametrize(
@@ -96,13 +98,13 @@ def test_public_summary_without_encrypted_context_is_not_replayed(history_filter
         {"type": "response.function_call_arguments.delta", "delta": "{}"},
     ],
 )
-def test_other_stream_events_are_unchanged(history_filter, event):
-    assert history_filter.stream(event, __model__=MODEL) is event
+async def test_other_stream_events_are_unchanged(history_filter, event):
+    assert await history_filter.stream(event, __model__=MODEL) is event
 
 
 @pytest.mark.parametrize("has_text", [False, True])
-def test_request_restores_context_without_replacing_tool_message(history_filter, has_text):
-    details = json.loads(json.dumps(saved_details(history_filter)))
+async def test_request_restores_context_without_replacing_tool_message(history_filter, has_text):
+    details = json.loads(json.dumps(await saved_details(history_filter)))
     tool_calls = [
         {
             "id": "call-test",
@@ -132,8 +134,8 @@ def test_request_restores_context_without_replacing_tool_message(history_filter,
     assert history_filter.request(restored, __model__=MODEL) == restored
 
 
-def test_new_filter_instance_restores_saved_context_and_visible_answer(history_filter):
-    details = json.loads(json.dumps(saved_details(history_filter)))
+async def test_new_filter_instance_restores_saved_context_and_visible_answer(history_filter):
+    details = json.loads(json.dumps(await saved_details(history_filter)))
     fresh = type(history_filter)()
     body = {"messages": [{"role": "assistant", "content": "Answer.", "reasoning_details": details}]}
     restored = fresh.request(body, __model__=MODEL)["messages"]
@@ -153,7 +155,7 @@ def test_new_filter_instance_restores_saved_context_and_visible_answer(history_f
         ["reason-one", "message", "call-one", "reason-two", "call-two"],
     ],
 )
-def test_interleaved_reasoning_keeps_its_position_between_calls(history_filter, order):
+async def test_interleaved_reasoning_keeps_its_position_between_calls(history_filter, order):
     items = {
         "reason-one": {**REASONING, "id": "reason-one"},
         "reason-two": {**REASONING, "id": "reason-two"},
@@ -166,7 +168,7 @@ def test_interleaved_reasoning_keeps_its_position_between_calls(history_filter, 
         },
     }
     event = {"type": "response.completed", "response": {"output": [items[key] for key in order]}}
-    output = history_filter.stream(event, __model__=MODEL)["response"]["output"]
+    output = (await history_filter.stream(event, __model__=MODEL))["response"]["output"]
     details = [detail for item in output for detail in item.get("reasoning_details", [])]
     calls = [
         {"id": key, "type": "function", "function": {"name": "get_marker", "arguments": "{}"}}
@@ -195,8 +197,8 @@ def test_interleaved_reasoning_keeps_its_position_between_calls(history_filter, 
     assert history_filter.request(restored, __model__=MODEL) == restored
 
 
-def test_model_switch_does_not_replay_another_models_encrypted_context(history_filter):
-    details = saved_details(history_filter)
+async def test_model_switch_does_not_replay_another_models_encrypted_context(history_filter):
+    details = await saved_details(history_filter)
     other = {"id": "other-model", "openai": {"id": "other-model", "source": "chatgpt-connect"}}
     body = {"messages": [{"role": "assistant", "content": "Answer.", "reasoning_details": details}]}
     assert history_filter.request(body, __model__=other)["messages"] == [
@@ -204,9 +206,9 @@ def test_model_switch_does_not_replay_another_models_encrypted_context(history_f
     ]
 
 
-def test_foreign_reasoning_details_are_preserved(history_filter):
+async def test_foreign_reasoning_details_are_preserved(history_filter):
     foreign = {"type": "reasoning.text", "text": "Foreign summary."}
-    details = [foreign, *saved_details(history_filter)]
+    details = [foreign, *(await saved_details(history_filter))]
     body = {"messages": [{"role": "assistant", "content": "", "reasoning_details": details}]}
     result = history_filter.request(body, __model__=MODEL)["messages"]
     assert result[0]["output"] == [REASONING]
@@ -216,8 +218,8 @@ def test_foreign_reasoning_details_are_preserved(history_filter):
 @pytest.mark.parametrize(
     "change", [{"data": ""}, {"data": 12}, {"summary": None}, {"format": "unknown"}]
 )
-def test_invalid_context_fails_without_logging_opaque_data(history_filter, change, caplog):
-    details = [{**saved_details(history_filter)[0], **change}]
+async def test_invalid_context_fails_without_logging_opaque_data(history_filter, change, caplog):
+    details = [{**(await saved_details(history_filter))[0], **change}]
     with pytest.raises(ValueError, match="saved ChatGPT reasoning context is invalid"):
         history_filter.request(
             {"messages": [{"role": "assistant", "reasoning_details": details}]}, __model__=MODEL

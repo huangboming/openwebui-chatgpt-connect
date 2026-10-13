@@ -102,6 +102,7 @@ async def test_hosted_actions_and_citations_are_relayed_only_when_requested(harn
     payload = json.loads(harness.upstream.calls("/v1/responses")[-1].content)
     assert payload["tools"][0]["type"] == "namespace"
     assert payload["reasoning"] == {"effort": "medium", "summary": "auto"}
+    assert ("web_search_call.action.sources" in payload["include"]) is enabled
     if enabled:
         assert payload["tools"][1] == {"type": "web_search"}
         assert received == harness.upstream.events
@@ -109,6 +110,147 @@ async def test_hosted_actions_and_citations_are_relayed_only_when_requested(harn
         assert received[-1]["type"] == "response.failed"
         assert received[-1]["response"]["error"]["code"] == "siwc_unsupported_output"
     assert harness.upstream.streams[-1].closed
+
+
+async def test_progress_and_retrieved_links_use_native_ui_without_rewriting_output(
+    history_filter,
+):
+    page = "https://example.test/report"
+    search = {
+        **SEARCH,
+        "action": {
+            **SEARCH["action"],
+            "sources": [
+                {"url": CITATION["url"], "title": CITATION["title"]},
+                {"url": page, "title": "Report"},
+                {"url": page, "title": "Duplicate"},
+                {"url": "https://example.test/overview"},
+                {"url": "javascript:alert(1)"},
+                {"url": "https://secret@example.test/private"},
+            ],
+        },
+    }
+    frames = [
+        {"type": "response.web_search_call.in_progress"},
+        {"type": "response.web_search_call.searching"},
+        {"type": "response.output_item.done", "item": search},
+        {
+            "type": "response.output_item.done",
+            "item": {
+                **SEARCH,
+                "action": {"type": "open_page", "url": page},
+            },
+        },
+        {"type": "response.completed", "response": {"output": [search, ANSWER]}},
+    ]
+    original = copy.deepcopy(frames)
+    emitted = []
+
+    async def emit(event):
+        emitted.append(event)
+
+    for frame in frames:
+        assert await history_filter.stream(frame, __model__=MODEL, __event_emitter__=emit) == frame
+    assert frames == original
+    statuses = [event["data"] for event in emitted if event["type"] == "status"]
+    assert [status["description"] for status in statuses] == [
+        "Accessing the web",
+        "Searching the web",
+        "Search completed",
+        "Page-opening step completed",
+        "Web-enabled response completed",
+    ]
+    assert [status["done"] for status in statuses] == [False, False, True, True, True]
+    sources = [event["data"] for event in emitted if event["type"] == "source"]
+    displayed = {source["metadata"][0]["source"]: source for source in sources}
+    assert [source["source"]["url"] for source in displayed.values()] == [
+        CITATION["url"],
+        page,
+        "https://example.test/overview",
+    ]
+    assert sources[1]["source"]["name"] == "Search result: Report"
+    # Native source IDs deduplicate item/final notifications; streamed links
+    # still exist when the final response has no output snapshot.
+    emitted.clear()
+    await history_filter.stream(frames[2], __model__=MODEL, __event_emitter__=emit)
+    await history_filter.stream(
+        {"type": "response.completed", "response": {"output": []}},
+        __model__=MODEL,
+        __event_emitter__=emit,
+        __body__={"tools": [{"type": "web_search"}]},
+    )
+    assert [event["data"] for event in emitted if event["type"] == "source"] == list(
+        displayed.values()
+    )
+    assert emitted[-1]["data"]["done"] is True
+    assert all(source["metadata"][0]["type"] == "web_search_result" for source in sources)
+    assert all("not necessarily opened or cited" in source["document"][0] for source in sources)
+    assert all(not source["metadata"][0]["source"].startswith("http") for source in sources)
+
+
+@pytest.mark.parametrize("kind", ["response.failed", "response.incomplete"])
+async def test_web_response_failure_finishes_progress_without_publishing_results(
+    history_filter,
+    kind,
+):
+    emitted = []
+
+    async def emit(event):
+        emitted.append(event)
+
+    event = {"type": kind, "response": {"output": [SEARCH, ANSWER]}}
+    assert await history_filter.stream(event, __model__=MODEL, __event_emitter__=emit) is event
+    assert emitted == [
+        {
+            "type": "status",
+            "data": {
+                "action": "web_search",
+                "description": "Web-enabled response failed",
+                "done": True,
+                "error": True,
+            },
+        }
+    ]
+
+
+async def test_optional_ui_delivery_does_not_break_history_or_affect_other_models(history_filter):
+    emitted = []
+
+    async def unavailable(event):
+        emitted.append(event)
+        raise RuntimeError("UI unavailable")
+
+    snapshot = {"type": "response.completed", "response": {"output": [REASONING, SEARCH, ANSWER]}}
+    encoded = await history_filter.stream(
+        snapshot,
+        __model__=MODEL,
+        __event_emitter__=unavailable,
+    )
+    assert encoded == await history_filter.stream(snapshot, __model__=MODEL)
+    assert (
+        encoded["response"]["output"][0]["reasoning_details"][0]["data"]
+        == REASONING["encrypted_content"]
+    )
+    assert len(emitted) == 1
+    assert (
+        await history_filter.stream(
+            snapshot,
+            __model__={},
+            __event_emitter__=unavailable,
+        )
+        is snapshot
+    )
+    assert len(emitted) == 1
+    ordinary = {"type": "response.completed", "response": {"output": [ANSWER]}}
+    assert (
+        await history_filter.stream(
+            ordinary,
+            __model__=MODEL,
+            __event_emitter__=unavailable,
+        )
+        == ordinary
+    )
+    assert len(emitted) == 1
 
 
 async def test_saved_web_actions_replay_in_order_with_reasoning_and_function_calls(
@@ -123,9 +265,9 @@ async def test_saved_web_actions_replay_in_order_with_reasoning_and_function_cal
     later_reasoning = {**REASONING, "id": "rs_later", "encrypted_content": "opaque-later"}
     output = [leading, REASONING, SEARCH, CALL, trailing, later_reasoning, ANSWER]
     snapshot = {"type": "response.completed", "response": {"status": "completed", "output": output}}
-    encoded = history_filter.stream(snapshot, __model__=MODEL)
+    encoded = await history_filter.stream(snapshot, __model__=MODEL)
     assert snapshot["response"]["output"] == output
-    assert history_filter.stream(encoded, __model__=MODEL) == encoded
+    assert await history_filter.stream(encoded, __model__=MODEL) == encoded
     details = [
         detail
         for item in encoded["response"]["output"]
