@@ -33,7 +33,7 @@ Python sources live in `src/openwebui_chatgpt_connect/`:
 - Keep file locks, restrictive permissions, atomic saves, and coordinated session changes. Credentials live under Open WebUI's `DATA_DIR/siwc-connect`.
 - Sign out attempts revocation and clears local tokens, but retains the issued client/account mapping and stable host ID. Removing the remote app is a separate ChatGPT settings action.
 - SIWC requests use `store=false`, `stream=true`, and complete input history. Preserve text/image order, tool call/result pairing, and reasoning order relative to tool calls. Open WebUI executes function tools; the adapter supplies the required SIWC namespace.
-- Uploaded documents are current-request attachment context, not per-turn replay. Resolve file IDs through host permissions and storage; never trust request paths. Preserve original bytes, enforce the shared size limit, consume only converted upload references before RAG, and leave knowledge sources unchanged.
+- Uploaded documents are current-request attachment context, not per-turn replay. Resolve file IDs through host permissions and storage; never trust request paths. Preserve original bytes as inline file data (SIWC has no Files upload API), enforce the shared size limit, consume only converted upload references before RAG, and leave knowledge sources unchanged.
 - Native web access is opt-in through the chat Web Search switch. Preserve global/user/model web-search controls; consume only the connector's host search flag before RAG and builtin search injection. OpenAI executes hosted search and page opening in the main request; Open WebUI still owns ordinary function tools. Carry hosted actions alongside encrypted reasoning in native history without synthetic reasoning or a second store. Emit progress only from actual events; keep retrieved results distinct from answer citations. UI delivery failures must not interrupt inference or history adaptation.
 - A stream succeeds only at `response.completed`. Close upstream resources on cancellation, disconnect, or failure; do not retry a stream after consumption has begun.
 - Thinking displays public summaries only. Preserve accumulated summaries when final snapshots are empty, retain paragraph boundaries, and prefer nonempty upstream snapshots. Never decrypt, display, rewrite, or fabricate encrypted reasoning.
@@ -63,6 +63,6 @@ Keep new tests proportional to changed observable contracts; use deployment acce
 
 ## Change style
 
-Use English source, UI, and documentation. Keep changes small and self-documenting. Split modules only for a concrete boundary, not a `tools.py`/`images.py`/`streaming.py` taxonomy. Add regression tests for observable behavior, not implementation details.
+Use English source, UI, and documentation. Keep the admin UI state-driven and user-oriented, not a protocol or capability dashboard. Keep changes small and self-documenting. Split modules only for a concrete boundary, not a `tools.py`/`images.py`/`streaming.py` taxonomy. Add regression tests for observable behavior, not implementation details.
 
 Use one physical line per prose paragraph; preserve structural line breaks for lists, tables, and code blocks. Let Markdown renderers wrap text rather than inserting hard wraps to match code line widths.
